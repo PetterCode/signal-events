@@ -1,0 +1,112 @@
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 221430
+Stund: 221430
+Ställe: Östra grinden
+Styrka: 1
+Slag: Skåpbil
+Sysselsättning: Fotograferade stängslet, körde sedan iväg norrut
+Symbol: Grå
+Reg.Nr: ABC123
+Sagesman: Vakt Andersson
+Sedan: Fortsatt bevakning av östra grinden
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 221610
+Stund: 221610
+Ställe: Skogsbrynet vid förrådet
+Styrka: 1
+Slag: Person
+Sysselsättning: Stod stilla länge och tittade mot vakttornet
+Symbol: Mörka kläder, svart keps, mörk ryggsäck
+Sagesman: Vakt Lindqvist
+Sedan: Noterat, fortsatt uppmärksamhet vid förrådet
+
+---
+
+Till: Stabsassistent
+Från: Vakt Berg
+TNR: 230915
+Stund: 230915
+Ställe: Västra infarten
+Styrka: 1
+Slag: Skåpbil
+Sysselsättning: Saktade ner och stannade kort innan den körde vidare
+Symbol: Grå, samma fordon som sågs vid östra grinden igår
+Reg.Nr: ABC123
+Sagesman: Vakt Berg
+Sedan: Registrerat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 231205
+Stund: 231205
+Ställe: Södra hörnet av stängslet
+Styrka: -
+Slag: Skadegörelse
+Sysselsättning: Klippt stängsel upptäckt, ingen person närvarande vid upptäckt
+Symbol: Hål i stängslet, ca 1 meter
+Sagesman: Vakt Andersson
+Sedan: Teknisk avdelning kontaktad för reparation, ökad bevakning av området
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 232030
+Stund: 232030
+Ställe: Bortre parkeringen
+Styrka: 1
+Slag: Beväpnad person
+Sysselsättning: Försvann in i skogen innan vakt hann agera
+Symbol: Bar vad som såg ut som ett gevär
+Sagesman: Vakt Lindqvist
+Sedan: Polis underrättad, skärpt bevakning
+
+---
+
+Till: Stabsassistent
+Från: Vakt Berg
+TNR: 240740
+Stund: 240740
+Ställe: Huvudentrén
+Styrka: 1
+Slag: Person
+Sysselsättning: Fotograferade skyltar och kameror vid entrén
+Symbol: Mörka kläder, svart keps, mörk ryggsäck
+Sagesman: Vakt Berg
+Sedan: Bildmaterial sparat, fortsatt bevakning
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 241900
+Stund: 241900
+Ställe: Norra skogsbrynet
+Styrka: 2
+Slag: Beväpnade personer
+Sysselsättning: Avvek söderut mot allmän väg
+Symbol: En av personerna bar vapen
+Sagesman: Vakt Andersson
+Sedan: Polis underrättad, förhöjd beredskap
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 242215
+Stund: 242215
+Ställe: Vid transformatorstationen
+Styrka: 1
+Slag: Skåpbil
+Sysselsättning: Parkerad i ca 10 minuter innan den körde iväg
+Symbol: Grå, samma utseende som tidigare
+Reg.Nr: ABC123
+Sagesman: Vakt Lindqvist
+Sedan: Fortsatt övervakning, jämförs med tidigare observationer

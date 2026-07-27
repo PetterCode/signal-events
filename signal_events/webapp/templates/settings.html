@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Inställningar{% endblock %}
+{% block content %}
+  <h1>Inställningar</h1>
+
+  <div class="card">
+    <h3>Rensa allt</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Tar bort samtliga rapporter, meddelanden och bilagor, mottagna
+      statusrapporter från angränsande enheter, enhetsnamnet och listan
+      över angränsande enheter &mdash; hela databasen töms. Detta går
+      <strong>inte</strong> att ångra.
+    </p>
+    <form method="post" action="{{ url_for('events.reset_database') }}"
+          onsubmit="return confirm('Detta tar bort ALLA rapporter, meddelanden, bilagor och inställningar permanent och går inte att ångra. Är du säker?');">
+      <div class="actions">
+        <button type="submit" class="btn-danger">Rensa allt</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <form method="post">
+      <label for="unit_name">Enhetsnamn</label>
+      <input type="text" id="unit_name" name="unit_name" value="{{ unit_name }}"
+             placeholder="t.ex. Kompani 1">
+      <p style="font-size:0.85rem;color:#666">
+        Enhetsnamnet används tillsammans med ett tidsstämplat TNR och
+        rapporttyp i filnamnen för genererade rapporter, t.ex.:
+      </p>
+      <p class="mono" style="display:inline-block">{{ example_filename }}</p>
+
+      <div class="actions">
+        <button type="submit">Spara</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Signal-grupper</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Namnen på de Signal-grupper appen använder. <strong>Bevakningsgrupp</strong>
+      är gruppen händelserapporter hämtas ifrån (<span class="mono">signal-events watch</span>/<span class="mono">sync</span>).
+      <strong>Rapportgrupp</strong> är dit genererade händelserapporter och
+      hotbedömningar skickas &mdash; samma grupp där angränsande enheters
+      statusrapporter tas emot ifrån. <strong>Återkommande-grupp</strong> är
+      dit listan över återkommande fordon/personer/observationer skickas.
+      <strong>Sensorgrupp</strong> är gruppen automatiska sensorutlösta
+      händelser hämtas ifrån &mdash; en sensorgateway rapporterar dit i
+      samma format som vanliga händelserapporter, så de tolkas och lagras
+      på exakt samma sätt och visas i den vanliga händelseloggen.
+      Ändringar här gäller direkt för knapparna i webbgränssnittet, men
+      kräver en omstart av <span class="mono">signal-events watch</span>/<span class="mono">serve --watch</span>
+      för att börja gälla för bakgrundsbevakningen.
+    </p>
+    <form method="post" action="{{ url_for('events.save_groups') }}">
+      <label for="watch_group">Bevakningsgrupp (hämtar händelser ifrån)</label>
+      <input type="text" id="watch_group" name="watch_group" value="{{ watch_group }}">
+
+      <label for="report_group">Rapportgrupp (skickar rapporter/hotbedömningar till)</label>
+      <input type="text" id="report_group" name="report_group" value="{{ report_group }}">
+
+      <label for="recurring_group">Återkommande-grupp (skickar listan över återkommande till)</label>
+      <input type="text" id="recurring_group" name="recurring_group" value="{{ recurring_group }}">
+
+      <label for="sensor_group">Sensorgrupp (hämtar automatiska sensorhändelser ifrån)</label>
+      <input type="text" id="sensor_group" name="sensor_group" value="{{ sensor_group }}">
+
+      <div class="actions">
+        <button type="submit">Spara Signal-grupper</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Ytterligare användare</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Konton för gäster som ansluter till webbgränssnittet från samma
+      WiFi/LAN som datorn som kör appen (t.ex. via
+      <span class="mono">192.168.1.23:5000</span> i webbläsaren, inte
+      <span class="mono">localhost</span>). De loggar in med namn och
+      lösenord och kan granska/lägga till händelser och se
+      rapporter/hotbedömningar, men når varken Inställningar eller Demo
+      och övning &mdash; det märket ser bara du, inloggad på den här
+      datorn. Kräver att servern startas med <span class="mono">--host 0.0.0.0</span>
+      (eller en LAN-synlig adress); med standardinställningen
+      <span class="mono">127.0.0.1</span> är webbgränssnittet bara nåbart
+      från den här datorn, och den här sektionen behövs inte alls.
+    </p>
+
+    {% if users %}
+      <table>
+        <thead><tr><th>Namn</th><th>Skapad</th><th></th></tr></thead>
+        <tbody>
+          {% for user in users %}
+            <tr>
+              <td>{{ user.name }}</td>
+              <td>{{ user.created_at }}</td>
+              <td>
+                <form method="post" action="{{ url_for('events.delete_user', user_id=user.id) }}" style="display:inline">
+                  <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ta bort</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="color:#666">Inga ytterligare användare tillagda ännu.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('events.create_user') }}">
+      <label for="new_user_name">Namn</label>
+      <input type="text" id="new_user_name" name="name" placeholder="t.ex. Vakt Andersson">
+      <label for="new_user_password">Lösenord</label>
+      <input type="password" id="new_user_password" name="password">
+      <div class="actions">
+        <button type="submit">Lägg till användare</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Dela adress med gäster</h3>
+    {% if lan_url %}
+      <p style="font-size:0.85rem;color:#666">
+        Låt en gäst skanna koden med sin telefonkamera för att öppna
+        inloggningssidan direkt, i stället för att skriva in adressen för
+        hand. Fungerar bara om gästens enhet är ansluten till samma
+        WiFi/LAN som den här datorn.
+      </p>
+      <img src="{{ url_for('events.lan_qrcode') }}" alt="QR-kod till {{ lan_url }}"
+           width="200" height="200" style="display:block">
+      <p class="mono" style="font-size:0.8rem">{{ lan_url }}</p>
+    {% else %}
+      <p style="font-size:0.85rem;color:#666">
+        Servern är just nu bara nåbar från den här datorn
+        (<span class="mono">127.0.0.1</span>). Starta om med
+        <span class="mono">signal-events serve --host 0.0.0.0</span> för
+        att göra den nåbar &mdash; och den här QR-koden användbar &mdash;
+        för andra enheter på samma WiFi/LAN.
+      </p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Angränsande enheter</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Namn på angränsande enheter, för referens på sammanställd
+      hotbedömning-sidan. En inkommande statusrapport identifieras
+      automatiskt utifrån enhetsnamnet i rapportens eget filnamn (t.ex.
+      <span class="mono">Kompani_2_301842_aterkommande.pdf</span> &rarr;
+      "Kompani_2") &mdash; ingen koppling till Signal-avsändare behövs här.
+    </p>
+
+    {% if adjacent_units %}
+      <table>
+        <thead><tr><th>Namn</th><th></th></tr></thead>
+        <tbody>
+          {% for unit in adjacent_units %}
+            <tr>
+              <td>{{ unit.name }}</td>
+              <td>
+                <form method="post" action="{{ url_for('events.delete_adjacent_unit', unit_id=unit.id) }}" style="display:inline">
+                  <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ta bort</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="color:#666">Inga angränsande enheter tillagda ännu.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('events.add_adjacent_unit') }}">
+      <label for="adjacent_unit_name">Lägg till enhet</label>
+      <input type="text" id="adjacent_unit_name" name="name" placeholder="t.ex. Kompani 2">
+      <div class="actions">
+        <button type="submit">Lägg till</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Rensa händelselogg</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Tar bort samtliga rapporter, meddelanden och bilagor. Enhetsnamnet,
+      listan över angränsande enheter och mottagna statusrapporter från
+      dem lämnas orörda. Detta går <strong>inte</strong> att ångra.
+    </p>
+    <form method="post" action="{{ url_for('events.reset_event_log') }}"
+          onsubmit="return confirm('Detta tar bort ALLA rapporter, meddelanden och bilagor permanent och går inte att ångra. Är du säker?');">
+      <div class="actions">
+        <button type="submit" class="btn-danger">Rensa händelselogg</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

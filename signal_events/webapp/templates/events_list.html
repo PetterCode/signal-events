@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Händelser{% endblock %}
+{% block content %}
+  <h1>Händelser</h1>
+  <p>
+    <a class="btn" href="{{ url_for('events.new_event') }}">+ Lägg till händelse</a>
+    <a class="btn btn-secondary" href="{{ url_for('events.import_events') }}">Importera från fil</a>
+  </p>
+  <div class="filters">
+    Tidsperiod:
+    {% for key, label in [("24h", "24 tim"), ("7d", "7 dagar"), ("30d", "30 dagar"), ("all", "Alla")] %}
+      <a href="{{ url_for('events.list_events', since=key, needs_review=review_filter) }}"
+         style="{{ 'font-weight:bold' if since == key else '' }}">{{ label }}</a>
+    {% endfor %}
+    &nbsp;|&nbsp;
+    <a href="{{ url_for('events.list_events', since=since) }}">Alla statusar</a>
+    <a href="{{ url_for('events.list_events', since=since, needs_review=1) }}">Behöver granskas</a>
+    <a href="{{ url_for('events.list_events', since=since, needs_review=0) }}">Granskade</a>
+  </div>
+
+  {% if not rows %}
+    <p>Inga händelser under denna period.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Tid</th><th>Plats</th><th>Antal</th><th>Objekt</th><th>Aktivitet</th>
+        <th>Rapporterad av</th><th>Status</th><th>Foton</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        {% set event = row.event %}
+        <tr>
+          <td>{{ event.event_time or "—" }}</td>
+          <td>{{ event.place or "—" }}</td>
+          <td>{{ event.count or "—" }}</td>
+          <td>{{ event.object or "—" }}</td>
+          <td>{{ event.activity or "—" }}</td>
+          <td>{{ event.reported_by or "—" }}</td>
+          <td>
+            {% if event.needs_review %}
+              <span class="badge badge-review">behöver granskas</span>
+            {% else %}
+              <span class="badge badge-ok">granskad</span>
+            {% endif %}
+            {% if event.is_trivial %}
+              <span class="badge badge-trivial">trivial</span>
+            {% endif %}
+            {% if row.is_duplicate %}
+              <span class="badge badge-trivial">dublett</span>
+            {% endif %}
+          </td>
+          <td>{{ row.attachments|length }}</td>
+          <td><a href="{{ url_for('events.event_detail', event_id=event.id) }}">Öppna</a></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+{% endblock %}

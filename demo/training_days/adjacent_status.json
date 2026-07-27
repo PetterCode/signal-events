@@ -1,0 +1,102 @@
+{
+  "1": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 1:\nFortsatt lugnt i vårt område. Inga återkommande mönster identifierade.\nBedömning: GRÖN."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 1:\nInga avvikande iakttagelser i vårt område. Rutinbevakning genomförd enligt schema.\nBedömning: GRÖN."
+    }
+  ],
+  "2": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 2:\nEtt fordon (Reg.Nr LMN234) passerade vid Södra vägen, inget avvikande i övrigt.\nBedömning: GRÖN."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 2:\nInga avvikande iakttagelser i vårt område. Rutinbevakning genomförd enligt schema.\nBedömning: GRÖN."
+    }
+  ],
+  "3": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 3:\nReg.Nr LMN234 observerat igen, denna gång vid Bro vid ån -- ett möjligt mönster noteras.\nBedömning: GUL."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 3:\nFortsatt lugnt i vårt område. Inga återkommande mönster identifierade.\nBedömning: GRÖN."
+    }
+  ],
+  "4": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 4:\nReg.Nr LMN234 sett en tredje gång vid Östra utposten. Även en person i mörka kläder observerad vid Norra skjutfältet.\nBedömning: GUL."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 4:\nEtt fordon (Reg.Nr RST789) passerade vid Västra ängen, inget avvikande i övrigt.\nBedömning: GRÖN."
+    }
+  ],
+  "5": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 5:\nÅterkommande fordon (Reg.Nr LMN234) och person bekräftat. Tecken på skadegörelse upptäckt vid Vid bygrinden (enstaka iakttagelse).\nBedömning: GUL, ökad uppmärksamhet."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 5:\nReg.Nr RST789 observerat igen, denna gång vid Gamla stenbron -- ett möjligt mönster noteras.\nBedömning: GUL."
+    }
+  ],
+  "6": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 6:\nEn beväpnad person siktades vid Skogsvägen bakom lägret (enstaka iakttagelse).\nBedömning: fortsatt GUL -- kräver upprepning för RÖD enligt gällande hotskala."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 6:\nReg.Nr RST789 sett en tredje gång vid Norra utposten. Även en person i mörka kläder observerad vid Kraftledningsgatan.\nBedömning: GUL."
+    }
+  ],
+  "7": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 7:\nFordonsmönstret (Reg.Nr LMN234) kvarstår, ytterligare observation vid Ladugården.\nBedömning: GUL."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 7:\nÅterkommande fordon (Reg.Nr RST789) och person bekräftat. Tecken på skadegörelse upptäckt vid Vid kolonistugorna (enstaka iakttagelse).\nBedömning: GUL, ökad uppmärksamhet."
+    }
+  ],
+  "8": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 8:\nEn andra beväpnad-person-iakttagelse gjord vid Åkerkanten.\nBedömning: RÖD -- återkommande allvarlig indikation."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 8:\nEn beväpnad person siktades vid Myrstigen (enstaka iakttagelse).\nBedömning: fortsatt GUL -- kräver upprepning för RÖD enligt gällande hotskala."
+    }
+  ],
+  "9": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 9:\nYtterligare tecken på sabotageförsök vid Vid vattentornet, utöver tidigare mönster med beväpnad person.\nBedömning: fortsatt RÖD -- skärpt beredskap kvarstår."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 9:\nFordonsmönstret (Reg.Nr RST789) kvarstår, ytterligare observation vid Kvarnvägen.\nBedömning: GUL."
+    }
+  ],
+  "10": [
+    {
+      "unit_name": "2.Kompani",
+      "body": "Status 2.Kompani, dag 10:\nYtterligare tecken på sabotageförsök vid Vid vattentornet, utöver tidigare mönster med beväpnad person.\nBedömning: fortsatt RÖD -- skärpt beredskap kvarstår."
+    },
+    {
+      "unit_name": "3.Kompani",
+      "body": "Status 3.Kompani, dag 10:\nEn andra beväpnad-person-iakttagelse gjord vid Vid järnvägsövergången.\nBedömning: RÖD -- återkommande allvarlig indikation."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Logg över hotbedömningar{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('events.summary') }}">&larr; Tillbaka till sammanställd hotbedömning</a></p>
+  <h1>Logg över hotbedömningar</h1>
+  <p style="font-size:0.85rem;color:#666">
+    Varje gång en sammanställd hotbedömning laddas ner eller skickas till
+    Signal loggas tidpunkt, hotnivå och poäng här, i tidsordning (senaste
+    överst). Enbart själva genereringen visas &mdash; att bara titta på
+    sidan "Sammanställd hotbedömning" loggas inte.
+  </p>
+
+  {% if not entries %}
+    <p style="color:#666">Inga hotbedömningar har genererats än.</p>
+  {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th>Rapport</th><th>Tid</th><th>Hotnivå</th><th>Poäng</th><th>Period</th>
+          <th>Rapporter i underlaget</th><th>Källa</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+          <tr>
+            <td class="mono">{{ entry.tnr }} {{ entry.unit_name }}</td>
+            <td>{{ entry.created_at }}</td>
+            <td>
+              <span class="badge badge-level-{{ entry.level }}">
+                {% if entry.level == "red" %}RÖD
+                {% elif entry.level == "yellow" %}GUL
+                {% else %}GRÖN
+                {% endif %}
+              </span>
+            </td>
+            <td>{{ entry.score }}</td>
+            <td>{{ entry.period_label }}</td>
+            <td>{{ entry.total_events }}</td>
+            <td>
+              {% if entry.source == "download" %}Nedladdad
+              {% elif entry.source == "send" %}Skickad till Signal
+              {% elif entry.source == "cli" %}CLI
+              {% else %}{{ entry.source }}
+              {% endif %}
+              {% if entry.format %}({{ entry.format }}){% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

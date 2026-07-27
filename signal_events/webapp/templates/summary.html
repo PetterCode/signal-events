@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Sammanställd hotbedömning{% endblock %}
+{% block content %}
+  <h1>Sammanställd hotbedömning &mdash; {{ site_name }}</h1>
+
+  <div class="filters">
+    Tidsperiod:
+    {% for key, label in [("24h", "24 tim"), ("7d", "7 dagar"), ("30d", "30 dagar"), ("all", "Alla")] %}
+      <a href="{{ url_for('events.summary', since=key, include_unreviewed=1 if include_unreviewed else 0) }}"
+         style="{{ 'font-weight:bold' if since == key else '' }}">{{ label }}</a>
+    {% endfor %}
+    &nbsp;|&nbsp;
+    {% if include_unreviewed %}
+      <a href="{{ url_for('events.summary', since=since, include_unreviewed=0) }}">Endast granskade</a>
+    {% else %}
+      <a href="{{ url_for('events.summary', since=since, include_unreviewed=1) }}">Inkludera ogranskade</a>
+    {% endif %}
+  </div>
+
+  <p>
+    <a class="btn" href="{{ url_for('events.summary', since=since, include_unreviewed=1 if include_unreviewed else 0, download='pdf') }}">Ladda ner PDF</a>
+    <a class="btn btn-secondary" href="{{ url_for('events.summary', since=since, include_unreviewed=1 if include_unreviewed else 0, download='markdown') }}">Ladda ner Markdown</a>
+    <a class="btn btn-secondary" href="{{ url_for('events.summary', since=since, include_unreviewed=1 if include_unreviewed else 0, download='text') }}">Ladda ner textfil</a>
+    <form method="post" action="{{ url_for('events.summary_send') }}" style="display:inline">
+      <input type="hidden" name="since" value="{{ since }}">
+      <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Skicka till Signal</button>
+    </form>
+    <form method="post" action="{{ url_for('events.summary_send_recurring') }}" style="display:inline">
+      <input type="hidden" name="since" value="{{ since }}">
+      <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Skicka lista över återkommande</button>
+    </form>
+  </p>
+  <p style="font-size:0.8rem;color:#666;margin-top:-0.5rem">
+    Skickas som PDF till Signal-gruppen <strong>{{ report_group_name }}</strong>.
+    Listan över återkommande fordon/personer/observationer (utan hotnivå)
+    skickas till <strong>{{ recurring_group_name }}</strong>.
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('events.summary_log') }}">Visa logg över tidigare hotbedömningar &rarr;</a>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('events.summary_ai') }}">Generera AI-sammanfattning &rarr;</a>
+  </p>
+
+  <div class="card">
+    <span class="threat-badge threat-{{ summary.threat.level }}">
+      {% if summary.threat.level == "red" %}RÖD &mdash; Återkommande allvarlig indikation, rekommenderad omedelbar genomgång
+      {% elif summary.threat.level == "yellow" %}GUL &mdash; Förhöjd uppmärksamhet rekommenderas
+      {% else %}GRÖN &mdash; Låg hotnivå
+      {% endif %}
+      (poäng: {{ summary.threat.score }})
+    </span>
+    <p>Rapporter i underlaget: {{ summary.total_events }} &middot; period: {{ since }}</p>
+
+    <h3>Motivering</h3>
+    <ul>
+      {% for reason in summary.threat.reasons %}
+        <li>{{ reason }}</li>
+      {% endfor %}
+    </ul>
+
+    <p class="disclaimer">
+      Detta är ett automatiskt genererat beslutsstöd baserat på enkla,
+      regelbaserade mönster i lagrade rapporter (inte AI/ML). RÖD utlöses
+      endast av återkommande (2+) allvarliga indikationer på våldsamma
+      handlingar &mdash; beväpnade personer, misstänkt sprängladdning,
+      eller tecken på sabotageförsök. En enstaka sådan observation ger
+      GUL, liksom mönster i sig (återkommande fordon/personer) &mdash;
+      RÖD kräver att indikationen upprepas. Detta ersätter inte mänsklig
+      bedömning &mdash; verifiera alltid underliggande händelser innan
+      åtgärd vidtas.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Manuell justering av hotnivå</h3>
+    {% if override %}
+      <p>
+        Manuellt satt till
+        <strong>
+          {% if override.level == "red" %}RÖD
+          {% elif override.level == "yellow" %}GUL
+          {% else %}GRÖN
+          {% endif %}
+        </strong>
+        &middot; {{ override.set_at_label }}
+        {% if override.notes %}<br>Anteckning: {{ override.notes }}{% endif %}
+      </p>
+      <form method="post" action="{{ url_for('events.summary_override_clear') }}" style="display:inline">
+        <input type="hidden" name="since" value="{{ since }}">
+        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+        <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Återgå till automatisk bedömning</button>
+      </form>
+    {% else %}
+      <p style="font-size:0.85rem;color:#666">
+        Sätt hotnivån manuellt om den automatiska bedömningen ovan behöver
+        korrigeras eller kompletteras &mdash; den automatiska bedömningen
+        och dess motivering visas fortfarande, oavsett.
+      </p>
+    {% endif %}
+    <form method="post" action="{{ url_for('events.summary_override') }}">
+      <input type="hidden" name="since" value="{{ since }}">
+      <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+      <label for="override_level">Hotnivå</label>
+      <select id="override_level" name="level">
+        <option value="green" {{ "selected" if (override.level if override else summary.threat.level) == "green" else "" }}>GRÖN</option>
+        <option value="yellow" {{ "selected" if (override.level if override else summary.threat.level) == "yellow" else "" }}>GUL</option>
+        <option value="red" {{ "selected" if (override.level if override else summary.threat.level) == "red" else "" }}>RÖD</option>
+      </select>
+      <label for="override_notes">Anteckning (valfritt)</label>
+      <textarea id="override_notes" name="notes">{{ override.notes if override else "" }}</textarea>
+      <div class="actions">
+        <button type="submit">Spara manuell hotnivå</button>
+      </div>
+    </form>
+  </div>
+
+  {% macro render_groups(title, groups) %}
+    <div class="card">
+      <h3>{{ title }}</h3>
+      {% if not groups %}
+        <p style="color:#666">Inga identifierade.</p>
+      {% else %}
+        {% for group in groups %}
+          <div class="group-card">
+            <strong>{{ group.label }}</strong> &mdash;
+            {% if group.kind == "notable" %}
+              enstaka observation, poäng {{ group.score }}
+            {% else %}
+              {{ group.count }} {{ "gång" if group.count == 1 else "gånger" }}, poäng {{ group.score }}
+            {% endif %}
+            <ul>
+              {% for reason in group.reasons %}
+                <li>{{ reason }}</li>
+              {% endfor %}
+            </ul>
+            <div class="group-events">
+              {% for ref in group.events %}
+                <a href="{{ url_for('events.event_detail', event_id=ref.id) }}">{{ event_tnr(ref.event_time, ref.created_at) }}{% if ref.place %} ({{ ref.place }}){% endif %}</a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  {% endmacro %}
+
+  {{ render_groups("Återkommande fordon", summary.vehicle_groups) }}
+  {{ render_groups("Återkommande personer", summary.person_groups) }}
+  {{ render_groups("Övriga anmärkningsvärda observationer", summary.other_groups) }}
+
+  <div class="card">
+    <h3>Status från angränsande enheter</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Senaste statusrapport per angränsande enhet, mottagen i
+      Signal-gruppen <strong>{{ adjacent_reports_group_name }}</strong>
+      (samma grupp som denna enhets egna rapporter skickas till) under
+      vald period.
+    </p>
+    {% if not adjacent_rows %}
+      <p style="color:#666">Inga statusrapporter mottagna från angränsande enheter under perioden.</p>
+    {% else %}
+      {% for row in adjacent_rows %}
+        <div class="group-card">
+          <strong>{{ row.report.unit_name }}</strong>
+          &mdash; mottagen {{ row.report.received_at }}
+          {% if row.report.sender_name or row.report.sender_number %}
+            (avsändare: {{ row.report.sender_name or row.report.sender_number }})
+          {% endif %}
+          {% if row.report.body %}
+            <div class="raw-text">{{ row.report.body }}</div>
+          {% endif %}
+          {% if row.attachments %}
+            <div class="group-events">
+              {% for attachment in row.attachments %}
+                <a href="{{ url_for('events.adjacent_attachment_file', attachment_id=attachment.id) }}">Bilaga #{{ attachment.id }}</a>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% endif %}
+  </div>
+{% endblock %}

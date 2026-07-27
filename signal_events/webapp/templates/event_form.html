@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Ny händelse{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('events.list_events') }}">&larr; Tillbaka till händelser</a></p>
+  <h1>Lägg till händelse manuellt</h1>
+
+  <div class="card">
+    <p style="font-size:0.85rem;color:#666">
+      Använd detta för rapporter som tas emot utanför Signal (telefonsamtal,
+      personligen, radio) så att de hamnar i samma databas och rapporter.
+    </p>
+    <form method="post" enctype="multipart/form-data">
+      <label for="event_time">Tid</label>
+      <input type="text" id="event_time" name="event_time" placeholder="t.ex. 14:30">
+
+      <label for="place">Plats</label>
+      <input type="text" id="place" name="place">
+
+      <label for="count">Antal observerade objekt</label>
+      <input type="text" id="count" name="count">
+
+      <label for="object">Observerat objekt</label>
+      <input type="text" id="object" name="object">
+
+      <label for="activity">Aktivitet</label>
+      <input type="text" id="activity" name="activity">
+
+      <label for="marks">Kännetecken</label>
+      <input type="text" id="marks" name="marks">
+
+      <label for="reported_by">Rapporterad av</label>
+      <input type="text" id="reported_by" name="reported_by">
+
+      <label for="next_steps">Vad händer härnäst</label>
+      <textarea id="next_steps" name="next_steps"></textarea>
+
+      <label for="notes">Anteckningar (fritext, valfritt)</label>
+      <textarea id="notes" name="notes" placeholder="Eventuella ytterligare detaljer värda att spara ordagrant"></textarea>
+
+      <label for="photos">Foton</label>
+      <input type="file" id="photos" name="photos" accept="image/*" multiple>
+
+      <label>
+        <input type="checkbox" name="mark_reviewed" checked
+               style="width:auto;display:inline;vertical-align:middle">
+        Markera som granskad (inkludera i rapporter)
+      </label>
+
+      <div class="actions">
+        <button type="submit">Spara händelse</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

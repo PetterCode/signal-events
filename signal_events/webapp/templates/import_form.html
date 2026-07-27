@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Importera från fil{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('events.list_events') }}">&larr; Tillbaka till händelser</a></p>
+  <h1>Importera rapporter från en fil</h1>
+
+  <div class="card">
+    <p style="font-size:0.85rem;color:#666">
+      Ladda upp en textfil (.txt) med en rapport per block. Dela block med
+      en rad med bindestreck (<code>---</code>), eller bara en tom rad om
+      inga av dina rapporter behöver tomma rader internt. Ett block kan
+      börja med en valfri rad <code>Från: &lt;namn&gt;</code> för att ange
+      vem som rapporterade; annars används reservavsändaren nedan. Varje
+      block tolkas på samma sätt som ett Signal-meddelande, så importerade
+      rapporter flaggas också för granskning.
+    </p>
+    <pre class="raw-text">Från: Alice
+Kl 14:30 nära gamla bron, 3 lastbilar sedda parkerade, kamouflagemålade.
+---
+Från: Bo
+Två personer gående nära torget, bar reflexvästar.</pre>
+
+    <form method="post" enctype="multipart/form-data">
+      <label for="file">Fil</label>
+      <input type="file" id="file" name="file" accept=".txt,text/plain" required>
+
+      <label for="reported_by">Reservavsändare (används när ett block saknar en "Från:"-rad)</label>
+      <input type="text" id="reported_by" name="reported_by">
+
+      <div class="actions">
+        <button type="submit">Importera</button>
+      </div>
+    </form>
+  </div>
+
+  <p style="font-size:0.85rem;color:#666">
+    Letar du efter övningsscenariot för demo och utbildning? Det har
+    flyttat till <a href="{{ url_for('events.demo_import') }}">Demo och övning</a>.
+  </p>
+{% endblock %}

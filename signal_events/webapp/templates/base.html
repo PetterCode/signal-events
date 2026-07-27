@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Signalhändelser{% endblock %}</title>
+  <style>
+    body { font-family: -apple-system, Helvetica, Arial, sans-serif; margin: 0; background: #f5f5f5; color: #1a1a1a; }
+    header { background: #1a2733; color: #fff; padding: 0.75rem 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    header a { color: #fff; text-decoration: none; font-weight: 600; }
+    .header-top { display: flex; gap: 1.5rem; align-items: center; }
+    header nav a { color: #cfd8e3; font-weight: 400; margin-right: 1rem; }
+    .header-status { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; align-items: center; font-size: 0.8rem; color: #cfd8e3; }
+    .header-status .badge { font-weight: 700; }
+    #header-clock { display: inline-block; min-width: 19ch; font-variant-numeric: tabular-nums; }
+    main { padding: 1.5rem; max-width: 1000px; margin: 0 auto; }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e0e0e0; font-size: 0.9rem; }
+    th { background: #eef1f4; }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; }
+    .badge-review { background: #fde2b6; color: #7a4900; }
+    .badge-ok { background: #d7f0d7; color: #1e5c1e; }
+    .badge-trivial { background: #e0e0e0; color: #555; }
+    .badge-level-green { background: #d7f0d7; color: #1e5c1e; }
+    .badge-level-yellow { background: #fde2b6; color: #7a4900; }
+    .badge-level-red { background: #f8d7d7; color: #7a1e1e; }
+    .badge-demo { background: #e0d7f0; color: #4b2e83; }
+    .card { background: #fff; padding: 1rem 1.5rem; border-radius: 6px; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+    label { display: block; margin-top: 0.75rem; font-size: 0.85rem; font-weight: 600; color: #333; }
+    input[type=text], input[type=password], select, textarea { width: 100%; padding: 0.4rem; margin-top: 0.2rem; box-sizing: border-box; font-size: 0.9rem; }
+    textarea { min-height: 4rem; }
+    .attachments img { max-width: 220px; margin: 0.5rem 0.5rem 0 0; border-radius: 4px; border: 1px solid #ddd; }
+    .actions { margin-top: 1rem; }
+    button, .btn { background: #1a2733; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.9rem; text-decoration: none; display: inline-block; }
+    .btn-secondary { background: #6b7a89; }
+    .btn-danger { background: #b3352b; }
+    .raw-text { white-space: pre-wrap; background: #f8f8f8; padding: 0.75rem; border-radius: 4px; font-size: 0.85rem; }
+    .filters { margin-bottom: 1rem; }
+    .filters a { margin-right: 0.75rem; font-size: 0.85rem; }
+    .flash { padding: 0.6rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
+    .flash-message { background: #d7f0d7; color: #1e5c1e; }
+    .flash-error { background: #f8d7d7; color: #7a1e1e; }
+    .threat-badge { display: block; padding: 0.9rem 1.2rem; border-radius: 6px; font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; }
+    .threat-green { background: #d7f0d7; color: #1e5c1e; }
+    .threat-yellow { background: #fde2b6; color: #7a4900; }
+    .threat-red { background: #f8d7d7; color: #7a1e1e; }
+    .disclaimer { font-size: 0.8rem; color: #666; font-style: italic; margin-bottom: 1rem; }
+    .group-card { border-bottom: 1px solid #eee; padding: 0.75rem 0; }
+    .group-card:last-child { border-bottom: none; }
+    .group-events { font-size: 0.8rem; color: #555; }
+    .group-events a { margin-right: 0.6rem; }
+    .training-day-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; }
+    .training-day-buttons form { display: flex; align-items: center; gap: 0.4rem; }
+    button:disabled { background: #b7bfc6; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-top">
+      <a href="{{ url_for('events.list_events') }}">Signalhändelser</a>
+      <nav>
+        <a href="{{ url_for('events.list_events') }}">Händelser</a>
+        <a href="{{ url_for('events.report') }}">Skapa rapport</a>
+        <a href="{{ url_for('events.summary') }}">Sammanställd hotbedömning</a>
+        <a href="{{ url_for('events.summary_ai') }}">AI-sammanfattning</a>
+        {% if header_is_admin %}
+          <a href="{{ url_for('events.demo_import') }}">Demo och övning</a>
+          <a href="{{ url_for('events.system_log') }}">Systemlogg</a>
+          <a href="{{ url_for('events.settings') }}">Inställningar</a>
+        {% endif %}
+      </nav>
+    </div>
+    <div class="header-status">
+      <span>{{ header_unit_name or "Enhet ej angiven" }}</span>
+      <span id="header-clock"></span>
+      <span class="badge badge-level-{{ header_threat.level }}">
+        {% if header_threat.level == "red" %}RÖD
+        {% elif header_threat.level == "yellow" %}GUL
+        {% else %}GRÖN
+        {% endif %}
+        &middot; hotnivå ({{ header_threat_period_label }})
+      </span>
+      <span>Senast rapport till angränsande enheter: {{ header_last_adjacent_send }}</span>
+      {% if header_demo_mode %}
+        <span class="badge badge-demo">DEMO-LÄGE AKTIVT</span>
+      {% endif %}
+      {% if header_guest_name %}
+        <span>Inloggad som: {{ header_guest_name }}</span>
+        <form method="post" action="{{ url_for('events.logout') }}" style="display:inline">
+          <button type="submit" class="btn-secondary" style="border:none;cursor:pointer;font-size:0.75rem;padding:0.1rem 0.5rem">Logga ut</button>
+        </form>
+      {% endif %}
+    </div>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash flash-{{ category if category != 'message' else 'message' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    function updateHeaderClock() {
+      var el = document.getElementById("header-clock");
+      if (!el) return;
+      var now = new Date();
+      var pad = function (n) { return String(n).padStart(2, "0"); };
+      el.textContent = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate())
+        + " " + pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
+    }
+    updateHeaderClock();
+    setInterval(updateHeaderClock, 1000);
+  </script>
+</body>
+</html>

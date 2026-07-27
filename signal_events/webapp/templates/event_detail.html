@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Händelse {{ event_tnr(event.event_time, event.created_at) }}{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('events.list_events') }}">&larr; Tillbaka till händelser</a></p>
+  <h1>Händelse {{ event_tnr(event.event_time, event.created_at) }}</h1>
+  {% if event.is_duplicate %}
+    <p class="badge badge-trivial">
+      Dublett &mdash; matchar en tidigare händelse med samma plats, objekt och
+      beskrivning, och utesluts därför automatiskt ur hotbedömningen.
+    </p>
+  {% endif %}
+
+  <div class="card">
+    <h3>
+      {% if source == "manual" %}Anteckningar
+      {% elif source == "file_import" %}Importerad text
+      {% else %}Originalmeddelande
+      {% endif %}
+    </h3>
+    <p>
+      Från: <strong>{{ message.sender_name or message.sender_number or "okänd" }}</strong>
+      &middot;
+      {% if source == "manual" %}inlagd
+      {% elif source == "file_import" %}importerad
+      {% else %}mottagen
+      {% endif %}
+      {{ message.received_at }}
+    </p>
+    {% if message.body %}<div class="raw-text">{{ message.body }}</div>{% endif %}
+    {% if attachments %}
+      <div class="attachments">
+        {% for a in attachments %}
+          <img src="{{ url_for('events.attachment_file', attachment_id=a.id) }}" alt="bilaga {{ a.id }}">
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Rapportfält</h3>
+    {% if source != "manual" %}
+      <p style="font-size:0.85rem;color:#666">
+        Extraherat automatiskt från meddelandetexten &mdash; kontrollera och rätta
+        innan det tas med i en rapport.
+      </p>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data">
+      <label for="event_time">Tid</label>
+      <input type="text" id="event_time" name="event_time" value="{{ event.event_time or '' }}">
+
+      <label for="place">Plats</label>
+      <input type="text" id="place" name="place" value="{{ event.place or '' }}">
+
+      <label for="count">Antal observerade objekt</label>
+      <input type="text" id="count" name="count" value="{{ event.count or '' }}">
+
+      <label for="object">Observerat objekt</label>
+      <input type="text" id="object" name="object" value="{{ event.object or '' }}">
+
+      <label for="activity">Aktivitet</label>
+      <input type="text" id="activity" name="activity" value="{{ event.activity or '' }}">
+
+      <label for="marks">Kännetecken</label>
+      <input type="text" id="marks" name="marks" value="{{ event.marks or '' }}">
+
+      <label for="reported_by">Rapporterad av</label>
+      <input type="text" id="reported_by" name="reported_by" value="{{ event.reported_by or '' }}">
+
+      <label for="next_steps">Vad händer härnäst</label>
+      <textarea id="next_steps" name="next_steps">{{ event.next_steps or '' }}</textarea>
+
+      <label for="photos">Lägg till foton</label>
+      <input type="file" id="photos" name="photos" accept="image/*" multiple>
+
+      <label>
+        <input type="checkbox" name="mark_reviewed" {{ 'checked' if not event.needs_review else '' }}
+               style="width:auto;display:inline;vertical-align:middle">
+        Markera som granskad (inkludera i rapporter)
+      </label>
+
+      <label>
+        <input type="checkbox" name="mark_trivial" {{ 'checked' if event.is_trivial else '' }}
+               style="width:auto;display:inline;vertical-align:middle">
+        Trivial (rutinhändelse utan betydelse &mdash; utesluts automatiskt ur rapporter)
+      </label>
+
+      <div class="actions">
+        <button type="submit">Spara</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Ta bort händelse</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Tar bort denna händelse permanent, inklusive dess ursprungsmeddelande och
+      eventuella bilagor. Detta går <strong>inte</strong> att ångra.
+    </p>
+    <form method="post" action="{{ url_for('events.delete_event', event_id=event.id) }}"
+          onsubmit="return confirm('Ta bort denna händelse permanent? Detta går inte att ångra.');">
+      <div class="actions">
+        <button type="submit" class="btn-danger">Ta bort händelse</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

@@ -1,0 +1,554 @@
+# signal-events
+
+Receives incident reports (text + photos) sent over Signal, stores them in a
+local SQLite database, and generates summary reports (PDF/Markdown) — all
+designed to run on a laptop with **no network connection**, except for the
+one step that talks to Signal's servers.
+
+## How it fits together
+
+```
+Signal (phone) --link--> signal-cli (this laptop) --sync (needs network)--> SQLite + attachments/
+                                                                                    |
+                                                                     heuristic field parser
+                                                                                    |
+                                                                     local Flask review UI (offline)
+                                                                                    |
+                                                                     PDF / Markdown report (offline)
+```
+
+Only `signal-events sync` needs network access, since it talks to Signal's
+servers to fetch new messages. Everything else — reviewing events, editing
+fields, and generating reports — reads and writes only the local SQLite
+database and local files under `data/`, so it works fully offline.
+
+## The 8 report fields
+
+Each incoming message is parsed (best-effort, offline, regex/keyword based —
+not an LLM) into:
+
+1. **Time**
+2. **Place**
+3. **Number of objects observed**
+4. **What object is observed**
+5. **What activities are being made**
+6. **Distinguishing marks**
+7. **Who is sending the report** (taken from the Signal sender, not the text)
+8. **What happens next**
+
+Because free-text extraction is inherently unreliable, every parsed event is
+flagged `needs_review` until someone confirms or corrects it in the web UI.
+Only reviewed events are included in reports by default.
+
+## Setup
+
+### 1. Install Python dependencies
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 2. Install and link signal-cli (one-time, needs network)
+
+`signal-cli` is a separate open-source project — not part of this repo —
+that speaks the Signal protocol. Install it (e.g. `brew install signal-cli`
+on macOS, or see https://github.com/AsamK/signal-cli for other platforms).
+
+Link it as a secondary device to an existing Signal account on your phone:
+
+```bash
+python -m signal_events link --name "incident-laptop"
+```
+
+This prints a QR code directly in the terminal (needs the `qrcode` package,
+already in `requirements.txt`); scan it from **Signal app → Settings →
+Linked devices → Link new device** on the phone that will be sending
+reports. Once scanned, it prints the linked phone number and the exact
+`export SIGNAL_EVENTS_PHONE_NUMBER=...` line to use below. (Use `--no-qr`
+to print the raw link URI as text instead, e.g. if your terminal can't
+render block characters.)
+
+Other account-management commands, if needed:
+
+```bash
+python -m signal_events accounts              # list numbers signal-cli knows locally
+python -m signal_events devices --number +...  # list devices linked to an account
+```
+
+### 3. Configure
+
+Set environment variables (or put them in a `.env` you source yourself —
+this project doesn't read `.env` files automatically to avoid adding a
+dependency):
+
+```bash
+export SIGNAL_EVENTS_PHONE_NUMBER="+15551234567"   # the linked account's number
+# Optional overrides (defaults shown):
+# export SIGNAL_EVENTS_DATA_DIR="$(pwd)/data"
+# export SIGNAL_EVENTS_SIGNAL_CLI_BIN="signal-cli"
+```
+
+### 4. Initialize the database
+
+```bash
+python -m signal_events init-db
+```
+
+## Day-to-day usage
+
+**Starting the server without a terminal.** `Starta server.command` in
+the project root is a double-clickable launcher (Finder runs `.command`
+files in Terminal.app) that starts `signal-events serve` for you. It
+asks one question — whether to allow guests on the same WiFi/LAN to log
+in (see "Letting guests..." below) — then starts the server accordingly,
+on port 5001, adding `--watch` automatically if
+`SIGNAL_EVENTS_PHONE_NUMBER` is already set in your environment. Needs
+`chmod +x` to still be set if it's ever re-copied or re-cloned (Finder
+won't run a non-executable script); otherwise it just needs a
+double-click.
+
+**Header status strip** — every page in the web UI shows a status bar
+under "Signalhändelser" with, at a glance: the configured unit name, the
+current date/time (a plain client-side clock, ticking in the browser's
+own local time — nothing server-rendered or stale), a quick threat-level
+badge (GRÖN/GUL/RÖD, always computed over a fixed 7-day window regardless
+of whatever period the Sammanställd hotbedömning page itself is showing),
+and when a report — incident report or threat-level summary — was last
+successfully sent via Signal to the report group that adjacent units'
+own status updates also arrive on ("Aldrig" if never). This is a
+quick-glance indicator only; the authoritative assessment is always the
+dedicated Sammanställd hotbedömning page, computed over whichever period
+you actually select there.
+
+**Fetch new messages once** (needs network; run whenever you have
+connectivity — at home, on wifi, etc.):
+
+```bash
+python -m signal_events sync
+```
+
+**Continuously watch a Signal group** (needs network; run this in its own
+terminal/tmux/service for as long as you want live ingestion):
+
+```bash
+python -m signal_events watch --group "Stabsassistent test-händelser"
+```
+
+Resolves the group name to its Signal group id once (via `signal-cli
+listGroups`), then long-polls for new messages and pulls in only the ones
+posted to that group — direct messages and other groups are ignored.
+Prints a line each time it ingests new report(s), and a "still watching"
+heartbeat every 15 silent polls so you can tell it's alive; stop it with
+Ctrl+C. `--group` defaults to `"Stabsassistent test-händelser"`
+(`SIGNAL_EVENTS_WATCH_GROUP`); `--poll-timeout`
+controls how many seconds each poll cycle waits for new messages
+(default 20).
+
+This same command also polls a *second* group: `SIGNAL_EVENTS_REPORT_GROUP`
+(default `"Stabsassistent test-rapport"`) — the same group this unit's own
+generated reports are sent *to* (see "Send a report or summary to Signal"
+below) doubles as the shared exchange channel where adjacent units post
+their own reports too. Both groups are checked in a single signal-cli
+receive call per cycle (running two concurrent signal-cli processes
+against the same account can corrupt its local state, so this is
+deliberately one call, not two). The sending unit is identified from the
+plain-text unit name embedded in the report's own filename
+(`<enhet>_<TNR>_<rapporttyp>.<ext>`) — no separate sender mapping needed,
+and only genuine incoming messages are ever ingested this way, so this
+unit's own sent reports are never picked back up as if they were an
+adjacent unit's. Received status reports show up on the "Sammanställd
+hotbedömning" page under "Status från angränsande enheter" — but only
+ones with an identified unit name; since this group is shared with
+report distribution, it can also carry plain chat from people not
+posting a named report at all (someone just messaging in the group),
+and that's stored (for completeness) but left out of this list rather
+than shown as if it were a unit's status. Manage a reference list of
+known adjacent unit names on the "Inställningar" page (this list is just
+for your own reference — it doesn't affect how incoming reports are
+matched, since that's read directly from the filename).
+
+This same `watch`/`serve --watch` command also polls a *third* group:
+`SIGNAL_EVENTS_SENSOR_GROUP` (default `"Stabsassistent test-sensorer"`)
+— for automated sensor-trigger events from a sensor gateway. A sensor
+event is reported in the exact same 7S format as a human incident
+report, so it's parsed and stored identically (same `events` table, same
+review workflow, same fields) — the only difference is which Signal
+group it came in on. This makes three groups checked in the same single
+signal-cli receive call per cycle described above.
+
+**Rename the Signal groups** (web UI, "Inställningar" page → "Signal-
+grupper") — the four group names above (bevakningsgrupp/watch,
+rapportgrupp/report, återkommande-grupp/recurring, sensorgrupp/sensor)
+can be edited there instead of only via the
+`SIGNAL_EVENTS_WATCH_GROUP`/`_REPORT_GROUP`/`_RECURRING_GROUP`/
+`_SENSOR_GROUP` env vars, which now only serve as the fallback default
+when nothing's been set on that page. A change there applies immediately
+to web-triggered sends (report/summary/recurring) and to the incident-
+report/summary forms' own display, but `signal-events watch`/`serve
+--watch`'s background poller only resolves the watch/report group names
+once, at its own startup — restart it (or the whole server, for `serve
+--watch`) to pick up a renamed group. An explicit `--group`/
+`--watch-group` CLI flag always overrides whatever's configured here.
+
+**Review and correct parsed events** (fully offline, run anytime):
+
+```bash
+python -m signal_events serve
+# open http://127.0.0.1:5000 in a browser
+```
+
+`serve` on its own never touches the network — it only reads/writes the
+local database. To also pull new Signal messages continuously while the
+web UI is running, add `--watch` (runs the same group-poller as
+`signal-events watch`, in a background thread — including the report
+group doubling as the adjacent-units exchange channel):
+
+```bash
+python -m signal_events serve --watch --watch-group "Stabsassistent test-händelser"
+```
+
+If the poller fails (no network, wrong group name, signal-cli not linked),
+it logs the error to the terminal and stops itself — the web UI keeps
+working normally either way. `--watch-poll-timeout` mirrors `watch`'s
+`--poll-timeout`.
+
+**Letting guests on the same WiFi/LAN use the web UI.** By default
+(`--host 127.0.0.1`, the default) the web UI is reachable only from the
+machine running it, with no login at all — unchanged from before this
+feature existed. Starting it with `--host 0.0.0.0` (or a specific
+LAN-visible address) also makes it reachable from other devices on the
+same private network, at `http://<this-machine's-LAN-IP>:5000`. That
+access is tiered automatically, based on where a request actually comes
+from — there's nothing to configure beyond `--host`:
+
+- **This machine itself (127.0.0.1/::1)** — full access, no login, exactly
+  as before. This is "you"; if you also want to check the app from your
+  own phone on the same WiFi, that counts as a guest (see below) and
+  needs an account like anyone else — there's no separate admin login.
+- **Another device on the same private network** — must log in with an
+  account created on Inställningar → "Ytterligare användare" (name +
+  password; `werkzeug.security` password hashing, not plain text). Once
+  logged in, a guest can review/add/correct events, generate and send
+  reports, view the threat-level summary and AI narrative — everything
+  except Inställningar and Demo och övning, which stay admin-only (both
+  hidden from the guest's own nav and rejected outright if requested
+  directly). A "Logga ut" button sits next to "Inloggad som: &lt;name&gt;"
+  in the header once logged in.
+- **Anything not on a private network at all** (e.g. this laptop somehow
+  has a public IP, or the port gets forwarded) — refused outright with no
+  login form ever shown, regardless of credentials. Guest accounts are
+  for people on your WiFi, not for exposing this over the internet.
+
+**Systemlogg** (its own nav tab, admin-only — hidden from guests and
+rejected outright if a guest requests it directly) records every login,
+failed login attempt, logout, server start, and rejected non-private-
+network access attempt, newest first, along with who (name and IP for
+guest events) and when. It also lists which guest accounts have made a
+request in the last 5 minutes and haven't since logged out ("Aktiva
+användare just nu") — a login only counts as still "active" while that
+holds; logging out clears it immediately rather than waiting for the
+window to lapse. This is separate from the reported incident events
+themselves (see Händelser) — it's an audit trail of who's touched this
+installation, not operational data.
+
+This is still a plain-HTTP local dev server with no rate-limiting or
+account lockout — reasonable for a trusted home/office/field WiFi, but
+don't port-forward it or put it on a network you don't trust. The
+session-signing key is generated once per installation and stored
+locally (not a fixed value baked into the source), so a guest session
+from one install can't be forged by anyone who's just read this
+open-source code.
+
+There's no network discovery built in — a guest's device doesn't
+automatically find the server, so the address still has to reach them
+somehow. Inställningar → "Dela adress med gäster" shows a QR code (using
+the `qrcode`/Pillow packages already bundled for the signal-cli linking
+flow) that encodes this machine's actual LAN address — point a guest's
+phone camera at it and it opens the login page directly, no typing an IP
+address by hand. It only appears once the server is actually started
+with `--host 0.0.0.0` (or another LAN-visible address); with the default
+`127.0.0.1` binding, that card just explains that and shows no code,
+since one would point at an address nobody outside this machine could
+reach anyway.
+
+Browse events, open one, check/correct the 8 fields, tick "Mark as
+reviewed", save. Photos attached to the original message are shown inline.
+
+Browse events, open one, check/correct the 8 fields, tick "Mark as
+reviewed", save. Photos attached to the original message are shown inline.
+The same form has a **"Trivial"** checkbox for routine, non-notable
+reports (a deer crossing, a weather note, "nothing to report" on a
+patrol) — tick it and the event is excluded from generated reports. An
+event page also has a **"Ta bort händelse"** (delete) button — confirmed
+before it takes effect — that permanently removes the event along with
+its source message and any attached photos; use it for genuine mistakes
+or unwanted duplicates rather than leaving them in the log.
+Two other ways to get events in besides Signal sync, both in the web UI:
+
+- **Add report** — a form to type in a single report by hand (phone call,
+  in-person, radio), with optional photo upload.
+- **Import from file** — upload a plain text `.txt` file with multiple
+  reports at once. One report per block, blocks separated by a `---` line
+  (or a blank line if none of your reports need blank lines internally).
+  Each block may start with an optional `From: <name>` line to set the
+  sender; otherwise a fallback name entered on the import form is used.
+  Each block is parsed the same way as a Signal message (heuristically,
+  flagged for review) — this is meant for backlogs, notes typed up
+  elsewhere, or reports brought over from another device via USB.
+- **Demo och övning** (its own nav tab, separate from plain file import) —
+  a 10-day training scenario bundled with the app: buttons "Dag 1" through
+  "Dag 10" each import that day's ~30 pre-written reports (mostly routine
+  noise, with a recurring vehicle/person and an escalating armed/sabotage
+  pattern woven in) with one click, no file needed. Click through the days
+  in order and watch **Sammanställd hotbedömning** build from GRÖN to GUL
+  to RÖD as the pattern recurs. Each day also delivers a status report
+  from two adjacent units ("2.Kompani", "3.Kompani") that escalate on the
+  same rhythm shifted a day earlier/later, shown under "Status från
+  angränsande enheter" — see `demo/README.md` for the full story and
+  `demo/generate_training_days.py` to regenerate the files. While any
+  demo/training-day events remain in the database, the header status
+  strip on every page shows a **"DEMO-LÄGE AKTIVT"** badge, as a reminder
+  that what's on screen (including the threat level) isn't real
+  operational data. The same "Demo och övning" tab has a **"Rensa
+  demohändelser"** button (confirmed before it takes effect) that removes
+  only the events/messages/attachments tagged as coming from that
+  scenario — every other stored report, the unit name, and the
+  adjacent-unit roster/status reports are left alone, unlike the blunter
+  "Rensa händelselogg"/"Rensa allt" resets on Inställningar.
+
+**Set the unit name** (web UI, "Inställningar" page) — used together with a
+freshly generated TNR (a Day-Hour-Minute date-time-group, e.g. `301842`)
+and the report type in the filename of every generated report, e.g.
+`Kompani1_301842_hotbedomning.pdf`. Set once via the web UI; the CLI reads
+the same value from the local database, so `signal-events report`/
+`summary` filenames match whatever's configured there. Defaults to
+`enhet` if never set. This also names the file attached when sending a
+report to Signal, so the recipient sees a meaningful filename instead of
+a random one.
+
+**Generate a report** (fully offline):
+
+```bash
+python -m signal_events report --since 7d --format pdf --output report.pdf
+```
+
+Or generate from the web UI's "Generate report" page, which downloads the
+file directly. `--since` accepts `24h`, `7d`, `30d`, or `all`. `--format`
+accepts `pdf`, `markdown`, or `text` (a plain-text rendering with no
+Markdown syntax — the same content, for reading in a basic text viewer
+or pasting into a plain email). By default only reviewed events are
+included; pass `--include-unreviewed` to override.
+
+Before rendering, report generation also runs a best-effort **trivial
+filter** (`signal_events/triviality.py`): the same kind of offline
+keyword heuristics used elsewhere in this app, looking for routine,
+non-notable content (wildlife, weather notes, "nothing to report" on a
+patrol) among the events about to be included. Anything it recognizes is
+marked `is_trivial` in the database — same effect as ticking the
+"Trivial" checkbox by hand — and left out of that report. This is
+decision support, not a verdict: check `data/events.db` or the events
+list if you want to confirm what got filtered. Once a human reviews an
+event (saves the review form at all, whichever way the "Trivial"
+checkbox ends up), that judgment is final — the filter never overrides
+it on a later report, whether the event was reviewed and left
+non-trivial, or was auto-flagged trivial and then manually corrected
+back to normal.
+
+**Generate a consolidated threat-level summary** (fully offline):
+
+```bash
+python -m signal_events summary --since 7d --format pdf --output summary.pdf
+```
+
+Or use the web UI's "Sammanställd hotbedömning" page. This looks across
+all events in the period for the same vehicle (matched by registration
+number) or the same person/object (matched by description similarity)
+showing up more than once, flags observations with surveillance-like
+language ("photographing", "returns", "loiters", etc.), and produces a
+green/yellow/red recommendation with the full reasoning listed underneath
+— every score component names the group and evidence behind it. The page
+remembers whichever time period you last viewed (per browser session),
+so navigating to another tab and back shows the same period again
+instead of resetting to the "7 dagar" default — picking a different
+period always updates what's remembered.
+
+Alongside the recurring vehicle/person groups, **"Övriga
+anmärkningsvärda observationer"** also surfaces individually notable
+events that don't recur — a threat of violence, an armed person, a
+suspected explosive, or a sabotage sign mentioned just once — each
+linked directly to its event, rather than only being tallied as a count
+in the reasoning text above. An event already shown via a recurring
+group isn't listed twice here.
+
+**RED is reserved for *recurring* threats of violent action**, not
+pattern volume and not a single one-off report: it only triggers on 2+
+reports in the same period showing sightings of armed individuals,
+discovery of explosive devices, or signs of attempted sabotage (checked
+across *all* events, not just recurring vehicle/person groups, since
+these are about content, not correlation). A single report in any of
+those categories, or a recurring vehicle/person no matter how
+suspicious-looking, caps out at YELLOW — one credible-but-unrepeated
+report is worth flagging, and recurrence of an ordinary pattern is worth
+attention, but neither alone is a confirmed *pattern* of violent intent.
+This is rule-based decision support (no ML), not a verdict: always check
+the underlying events before acting on it. `SIGNAL_EVENTS_SITE_NAME` sets
+the site name shown in the report heading (defaults to "skyddsobjektet").
+`--format` accepts `pdf`, `markdown`, or `text`, same as `report` above.
+
+Before the analysis runs, it also excludes **duplicate reports**
+(`signal_events/duplicates.py`): two events with the same place and
+object, near-identical wording, and logged close together in time are
+treated as one incident described twice rather than a real second
+occurrence — this is deliberately distinct from *recurrence* (the same
+vehicle or person showing up again over time), which is exactly what the
+pattern-matching above is for. Anything recognized this way is marked
+`is_duplicate` in the database (shown as a "dublett" badge on the events
+list and the event page) and left out of the summary's event count and
+groups; it isn't removed, so it still shows up in the events list and can
+be deleted by hand if it's genuinely redundant.
+
+**Manuell justering av hotnivå** — the "Sammanställd hotbedömning" page
+has a "Manuell justering av hotnivå" card to correct or override the
+automatic level when a human's judgment differs from it. Saving one
+doesn't discard the automatic reasoning: it's layered on top
+(`analysis.apply_threat_override`), so the badge and the "Motivering"
+list still show the full rule-based assessment and its evidence,
+prefixed with a note naming the manual level, the automatic level, and
+any note you added. A single current override applies everywhere — the
+summary page, its downloads/sends, the CLI's `summary --llm`, and the
+header status strip on every page — until you click "Återgå till
+automatisk bedömning" to clear it. It persists in the local database
+across restarts, the same way the unit name does.
+
+**Logg över hotbedömningar** ("Sammanställd hotbedömning" page → "Visa
+logg över tidigare hotbedömningar") records every time a threat-level
+summary is actually produced — downloaded (any format) or sent to
+Signal, from the CLI or the web UI — with its timestamp, level, score,
+period, and how it was generated, in time order (newest first). Just
+viewing the summary page doesn't add an entry; only generating an
+artifact does. Each entry is identified as **"TNR Enhetsnamn"** (e.g.
+`262020 Kompani 1`) — the same TNR that's actually in the downloaded or
+sent file's own name, generated once per request and reused for both,
+so the log entry and the artifact always match.
+
+**Events are identified by TNR, not database id** — "Händelse 221430"
+instead of "Händelse #42", wherever an event is referenced (its own
+page, and every report/summary listing). Uses the event's own
+`event_time` directly when that's already in valid TNR (DDHHMM) format,
+as it is for a 7S report's "Stund" field; otherwise derives one from
+when the event was recorded. Like report-file TNRs, this isn't
+guaranteed unique (no month/year in DDHHMM) — it's a display label, not
+a primary key; the underlying link still uses the real database id.
+The "Händelser" list is sorted by this same TNR (newest first), not by
+when a report was logged into the database — so a sensor event (or any
+report with an accurate Stund) lines up by when it actually happened
+even if it was ingested out of order relative to other reports.
+
+**Optional: AI narrative via a local LLM.** The summary can also include a
+prose write-up generated by a locally running [Ollama](https://ollama.com)
+server — no internet involved, since Ollama serves the model from disk over
+localhost. The green/yellow/red level and the evidence stay exactly as
+computed by the rule-based engine; the model is only asked to turn that
+into readable text, and is explicitly instructed not to invent facts or
+change the verdict.
+
+```bash
+ollama serve                      # if not already running
+ollama pull llama3.1               # one-time download, tags as llama3.1:latest
+python -m signal_events summary --since 7d --llm --format pdf --output summary.pdf
+```
+
+Or use the "AI-sammanfattning" tab in the web UI (its own nav item,
+separate from "Sammanställd hotbedömning") — it always summarizes
+whatever period/filter the summary page itself is currently showing, so
+there's one underlying "underlag" for both rather than two independently
+selected ones. If Ollama isn't running or the model tag isn't pulled, this fails
+gracefully with a clear message (run `ollama list` to see what you have)
+and the rest of the report still generates normally. Config (env vars):
+`SIGNAL_EVENTS_OLLAMA_URL` (default `http://localhost:11434`),
+`SIGNAL_EVENTS_OLLAMA_MODEL` (default `llama3.1:latest` — must match the
+exact tag from `ollama list`, e.g. `llama3.1:8b` if you pulled that tag
+specifically), `SIGNAL_EVENTS_OLLAMA_TIMEOUT` (seconds, default 120).
+
+**Send a report or summary to Signal.** Both the report page and the
+summary page have a "Skicka till Signal" button (needs network + a linked
+signal-cli account) that generates the PDF and sends it, with a short
+caption, as an attachment to a Signal group — by default
+`SIGNAL_EVENTS_REPORT_GROUP` (`"Stabsassistent test-rapport"`). This is
+the same group `watch` polls for adjacent units' status reports (see
+above) — it's a two-way channel: this unit sends its own reports here,
+and reads everyone else's from the same place. If sending fails (not
+linked, group not found, no network), it's reported inline on the page
+and nothing else is affected — the underlying PDF generation and
+download options keep working.
+
+The summary page also has a **"Skicka lista över återkommande"** button —
+sends just the recurring/suspicious vehicles, people, and other
+observations (the correlated groups and their evidence), without the
+threat-level badge, score, or motivering. A focused watchlist rather than
+the full assessment, sent to its own group by default
+`SIGNAL_EVENTS_RECURRING_GROUP` (`"Stabsassistent test-återkommande"`) —
+separate from both the incident-intake group (`watch`) and the
+report/adjacent-status group above.
+
+## Message format expectations
+
+Senders write free text, e.g.:
+
+> At 14:30 near the old bridge, 3 trucks seen parked, camo painted, no
+> plates visible. Recommend continued monitoring.
+
+The parser looks for time expressions, "at/near/in <place>" phrases,
+"<number> <noun>" patterns, activity/marks/next-step trigger words, etc.
+It will often miss or misattribute fields on unusual phrasing — that's
+expected and why the review step exists. If your reporters can use a
+consistent phrasing style (mentioning time, place, and counts explicitly),
+extraction quality improves a lot.
+
+## Data layout
+
+```
+data/
+  events.db          SQLite database (messages, attachments, events)
+  attachments/<msg>/ copied image files from Signal messages
+```
+
+Back this directory up like any other sensitive local data store — it's
+plain SQLite plus image files, no encryption is applied by this tool beyond
+whatever your disk/filesystem provides.
+
+## Running tests
+
+```bash
+pytest
+```
+
+## Notes and limitations
+
+- The field parser is intentionally simple (regex/keyword heuristics) so it
+  needs no network, no ML runtime, and no external services — it will not
+  match the accuracy of an LLM-based extractor, by design. Always review
+  before reporting.
+- `signal-cli` must remain linked/registered; if the link is revoked from
+  the phone, `sync` will start failing and you'll need to re-link.
+- **Newly added group members.** `receive`/`send` pass
+  `--trust-new-identities always` to signal-cli, so a message from someone
+  it hasn't seen before (a just-added group member, or someone who
+  reinstalled Signal) doesn't silently fail to decrypt and vanish — this
+  app has no identity-trust logic of its own, so without that flag those
+  messages never even reach it. The tradeoff: it also auto-trusts a
+  changed identity key without asking, which is the same warning Signal
+  normally shows if an account is compromised or re-registered elsewhere.
+  If you'd rather keep that check, remove the flag in `signal_client.py`
+  and instead run `signal-cli -u "$SIGNAL_EVENTS_PHONE_NUMBER" trust -a
+  <number>` by hand whenever a new sender's messages don't come through.
+- The only messages this tool sends are the explicit "Skicka till Signal"
+  report/summary sends, triggered by a deliberate click in the web UI —
+  it never sends anything on its own (`watch`/`sync` only read). The web
+  UI binds to `127.0.0.1` by default so it isn't exposed on your network.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

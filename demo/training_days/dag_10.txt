@@ -1,0 +1,418 @@
+Till: Stabsassistent
+Från: Vakt Berg
+TNR: 100120
+Stund: 100120
+Ställe: Sjön utanför området
+Styrka: 1
+Slag: Cyklist
+Sysselsättning: Passerade utanför stängslet
+Symbol: Ingen tydlig avvikelse, bedömdes som ofarligt
+Sagesman: Vakt Berg
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Nilsson
+TNR: 100143
+Stund: 100143
+Ställe: Kajen
+Styrka: 1
+Slag: Ekorre
+Sysselsättning: Vilade i gräset nära förrådet
+Symbol: Vanligt utseende, noterat i fältanteckningarna
+Sagesman: Vakt Nilsson
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 100213
+Stund: 100213
+Ställe: Skogsbrynet vid förrådet
+Styrka: 1
+Slag: Postbil
+Sysselsättning: Utförde planerat underhållsarbete
+Symbol: Kortvarig sikt, bedömdes som en engångsföreteelse
+Sagesman: Vakt Karlsson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Nilsson
+TNR: 100234
+Stund: 100234
+Ställe: Bommen vid infarten
+Styrka: 1
+Slag: Löpare
+Sysselsättning: Passerade utanför stängslet
+Symbol: Vanligt utseende, inget som krävde närmare kontroll
+Sagesman: Vakt Nilsson
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 100312
+Stund: 100312
+Ställe: Parkeringen vid huvudbyggnaden
+Styrka: -
+Slag: Rutinpatrullering
+Sysselsättning: Inget avvikande att rapportera
+Symbol: Sedd på håll, bedömdes som ofarligt
+Sagesman: Vakt Andersson
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 100415
+Stund: 100415
+Ställe: Bortre parkeringen
+Styrka: 1
+Slag: Grävling
+Sysselsättning: Vilade i gräset nära förrådet
+Symbol: Enstaka sikt, föranledde ingen ytterligare notering
+Sagesman: Vakt Andersson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Holm
+TNR: 100601
+Stund: 100601
+Ställe: Kajen
+Styrka: 1
+Slag: Skåpbil
+Sysselsättning: Sågs lasta okänt gods innan den körde iväg
+Symbol: Grå skåpbil
+Reg.Nr: QAB456
+Sagesman: Vakt Holm
+Sedan: Polis underrättad
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ström
+TNR: 100611
+Stund: 100611
+Ställe: Skjutbanan
+Styrka: 1
+Slag: Katt
+Sysselsättning: Sprang tvärs över vägen
+Symbol: Enstaka sikt, låg inom det förväntade
+Sagesman: Vakt Ström
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Berg
+TNR: 100611
+Stund: 100611
+Ställe: Skogsbrynet vid förrådet
+Styrka: 1
+Slag: Sopbil
+Sysselsättning: Utförde planerat underhållsarbete
+Symbol: Enstaka sikt, låg inom det förväntade
+Sagesman: Vakt Berg
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Nilsson
+TNR: 100615
+Stund: 100615
+Ställe: Norra vägen
+Styrka: 1
+Slag: Renhållningsfordon
+Sysselsättning: Passerade på allmän väg utan att stanna
+Symbol: Enstaka sikt, krävde ingen vidare uppföljning
+Sagesman: Vakt Nilsson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ström
+TNR: 100629
+Stund: 100629
+Ställe: Parkeringen vid huvudbyggnaden
+Styrka: 1
+Slag: Rådjur
+Sysselsättning: Betade en stund vid stängslet
+Symbol: Försvann snabbt, bedömdes som ofarligt
+Sagesman: Vakt Ström
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 100721
+Stund: 100721
+Ställe: Parkeringen vid huvudbyggnaden
+Styrka: 1
+Slag: Postbil
+Sysselsättning: Passerade på allmän väg utan att stanna
+Symbol: Kortvarig sikt, noterat i fältanteckningarna
+Sagesman: Vakt Karlsson
+Sedan: Inget vidare agerande
+
+---
+
+Till: Stabsassistent
+Från: Vakt Holm
+TNR: 100914
+Stund: 100914
+Ställe: Kajen
+Styrka: 1
+Slag: Hare
+Sysselsättning: Betade en stund vid stängslet
+Symbol: Kort varaktighet, föranledde ingen ytterligare notering
+Sagesman: Vakt Holm
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 100945
+Stund: 100945
+Ställe: Skjutbanan
+Styrka: -
+Slag: Väderobservation
+Sysselsättning: Nedsatt sikt på grund av dimma
+Symbol: Inga särskilda kännetecken, låg inom det förväntade
+Sagesman: Vakt Karlsson
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Nilsson
+TNR: 101144
+Stund: 101144
+Ställe: Skogsbrynet vid förrådet
+Styrka: 1
+Slag: Katt
+Sysselsättning: Passerade genom området och försvann in i skogen
+Symbol: Inga särskilda kännetecken, låg inom det förväntade
+Sagesman: Vakt Nilsson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 101156
+Stund: 101156
+Ställe: Västra infarten
+Styrka: -
+Slag: Rutinpatrullering
+Sysselsättning: Inget avvikande att rapportera
+Symbol: Sedd på håll, inget som krävde närmare kontroll
+Sagesman: Vakt Andersson
+Sedan: Inget vidare agerande
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ekberg
+TNR: 101208
+Stund: 101208
+Ställe: Förrådsbyggnaden
+Styrka: -
+Slag: Skadegörelse
+Sysselsättning: Uppbrutet lås vid förrådets bakdörr upptäckt
+Symbol: Skador på dörrkarm
+Sagesman: Vakt Ekberg
+Sedan: Teknisk avdelning kontaktad, förhöjd beredskap kvarstår
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 101224
+Stund: 101224
+Ställe: Skjutbanan
+Styrka: 1
+Slag: Sopbil
+Sysselsättning: Stod kort stilla innan den körde vidare
+Symbol: Rörde sig i buskaget, inget ovanligt i övrigt
+Sagesman: Vakt Andersson
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 101224
+Stund: 101224
+Ställe: Bommen vid infarten
+Styrka: 1
+Slag: Traktor
+Sysselsättning: Utförde planerat underhållsarbete
+Symbol: Sedd på håll, låg inom det förväntade
+Sagesman: Vakt Karlsson
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 101453
+Stund: 101453
+Ställe: Norra vägen
+Styrka: 1
+Slag: Besiktningsbil
+Sysselsättning: Utförde planerat underhållsarbete
+Symbol: Vanligt utseende, bedömdes som ofarligt
+Sagesman: Vakt Lindqvist
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 101500
+Stund: 101500
+Ställe: Huvudentrén
+Styrka: 1
+Slag: Katt
+Sysselsättning: Vilade i gräset nära förrådet
+Symbol: Inga särskilda kännetecken, föranledde ingen ytterligare notering
+Sagesman: Vakt Lindqvist
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Holm
+TNR: 101544
+Stund: 101544
+Ställe: Vaktkuren
+Styrka: 1
+Slag: Leveransbil
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Kort varaktighet, bedömdes som ofarligt
+Sagesman: Vakt Holm
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ekberg
+TNR: 101729
+Stund: 101729
+Ställe: Kajen
+Styrka: 1
+Slag: Fiskare
+Sysselsättning: Passerade utanför stängslet
+Symbol: Vanligt utseende, föranledde ingen ytterligare notering
+Sagesman: Vakt Ekberg
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ström
+TNR: 101747
+Stund: 101747
+Ställe: Huvudentrén
+Styrka: 1
+Slag: Servicebil
+Sysselsättning: Stod kort stilla innan den körde vidare
+Symbol: Kortvarig sikt, inget som krävde närmare kontroll
+Sagesman: Vakt Ström
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 101922
+Stund: 101922
+Ställe: Bortre parkeringen
+Styrka: 1
+Slag: Sopbil
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Ingen närmare beskrivning, gav inte anledning till oro
+Sagesman: Vakt Lindqvist
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ekberg
+TNR: 102037
+Stund: 102037
+Ställe: Bortre parkeringen
+Styrka: 14
+Slag: Skolklass
+Sysselsättning: Passerade på guidad rundtur utanför stängslet
+Symbol: Kort varaktighet, bedömdes som en engångsföreteelse
+Sagesman: Vakt Ekberg
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 102140
+Stund: 102140
+Ställe: Östra grinden
+Styrka: 1
+Slag: Postbil
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Sedd på håll, krävde ingen vidare uppföljning
+Sagesman: Vakt Andersson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 102239
+Stund: 102239
+Ställe: Skjutbanan
+Styrka: 1
+Slag: Fotgängare
+Sysselsättning: Passerade utanför stängslet
+Symbol: Sedd på håll, inget som krävde närmare kontroll
+Sagesman: Vakt Lindqvist
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Nilsson
+TNR: 102302
+Stund: 102302
+Ställe: Bortre parkeringen
+Styrka: 1
+Slag: Löpare
+Sysselsättning: Passerade utanför stängslet
+Symbol: Kort varaktighet, bedömdes som ofarligt
+Sagesman: Vakt Nilsson
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Berg
+TNR: 102306
+Stund: 102306
+Ställe: Skogsbrynet vid förrådet
+Styrka: -
+Slag: Rutinpatrullering
+Sysselsättning: Inget avvikande att rapportera
+Symbol: Inga särskilda kännetecken, låg inom det förväntade
+Sagesman: Vakt Berg
+Sedan: Noterat i vaktloggen

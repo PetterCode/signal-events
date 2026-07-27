@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Demo och övning{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('events.list_events') }}">&larr; Tillbaka till händelser</a></p>
+  <h1>Demo och övning</h1>
+
+  <div class="card">
+    <p style="font-size:0.85rem;color:#666">
+      Ett fiktivt tioddagarsscenario för utbildning och demonstration:
+      ca 30 rapporter per dag, mest rutinhändelser men med några enstaka
+      mönster som återkommer och trappas upp över tid. Importera en dag i
+      taget för att se hotbedömningen byggas upp &mdash; från GRÖN, via
+      GUL när ett mönster (ett återkommande fordon, en återkommande
+      person) märks av, till RÖD när en allvarlig indikation (beväpnad
+      person, sabotageförsök) upprepas.
+    </p>
+    <div class="training-day-buttons">
+      {% for entry in training_days %}
+        <form method="post" action="{{ url_for('events.import_training_day', day=entry.day) }}" style="display:inline-block">
+          <button type="submit" class="btn-secondary" style="border:none;cursor:pointer"
+                  {% if not entry.available %}disabled title="Övningsfilen saknas"{% endif %}>
+            Dag {{ entry.day }}
+          </button>
+          {% if entry.imported_count %}
+            <span style="font-size:0.75rem;color:#666">({{ entry.imported_count }} importerade)</span>
+          {% endif %}
+        </form>
+      {% endfor %}
+    </div>
+    <p style="font-size:0.8rem;color:#666;margin-top:0.5rem">
+      Varje knapptryck importerar den dagens fil oavsett om den redan
+      importerats tidigare &mdash; tryck bara en gång per dag för att
+      undvika dubbletter. Så länge några demohändelser finns kvar i
+      databasen visas "DEMO-LÄGE AKTIVT" högst upp på varje sida, som en
+      påminnelse om att uppgifterna inte är verklig underrättelseinformation.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Rensa demohändelser</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Tar bort endast de händelser, meddelanden och bilagor som kommer
+      från demo-/övningsscenariot ovan &mdash; övriga rapporter,
+      enhetsnamnet och listan över angränsande enheter lämnas orörda.
+      Detta går <strong>inte</strong> att ångra.
+    </p>
+    <form method="post" action="{{ url_for('events.demo_clear') }}"
+          onsubmit="return confirm('Ta bort alla demohändelser permanent? Detta går inte att ångra.');">
+      <div class="actions">
+        <button type="submit" class="btn-danger">Rensa demohändelser</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

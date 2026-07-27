@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Systemlogg{% endblock %}
+{% block content %}
+  <h1>Systemlogg</h1>
+  <p style="font-size:0.85rem;color:#666">
+    Endast synlig för administratören (inloggad från den här datorn).
+    Visar inloggningar, utloggningar, serverstarter och nekade
+    åtkomstförsök &mdash; inte de rapporterade händelserna själva, se
+    Händelser för dem.
+  </p>
+
+  <div class="card">
+    <h3>Aktiva användare just nu</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Gästkonton som gjort en förfrågan de senaste 5 minuterna och inte
+      loggat ut.
+    </p>
+    {% if active_users %}
+      <table>
+        <thead><tr><th>Namn</th><th>Senast aktiv</th></tr></thead>
+        <tbody>
+          {% for user in active_users %}
+            <tr>
+              <td>{{ user.name }}</td>
+              <td>{{ user.last_seen }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="color:#666">Inga gäster inloggade just nu.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Logg</h3>
+    {% if entries %}
+      <table>
+        <thead><tr><th>Tid</th><th>Händelse</th><th>Detalj</th></tr></thead>
+        <tbody>
+          {% for entry in entries %}
+            <tr>
+              <td class="mono">{{ entry.created_at }}</td>
+              <td>
+                {% if entry.event_type == "login" %}Inloggning
+                {% elif entry.event_type == "login_failed" %}Misslyckad inloggning
+                {% elif entry.event_type == "logout" %}Utloggning
+                {% elif entry.event_type == "server_start" %}Server startad
+                {% elif entry.event_type == "blocked_access" %}Åtkomst nekad (utanför nätverket)
+                {% else %}{{ entry.event_type }}
+                {% endif %}
+              </td>
+              <td>{{ entry.detail or "—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="color:#666">Inga händelser loggade ännu.</p>
+    {% endif %}
+  </div>
+{% endblock %}

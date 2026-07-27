@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}AI-sammanfattning{% endblock %}
+{% block content %}
+  <h1>AI-sammanfattning</h1>
+  <p style="font-size:0.85rem;color:#666">
+    Baseras på samma underlag som <a href="{{ url_for('events.summary', since=since, include_unreviewed=1 if include_unreviewed else 0) }}">Sammanställd hotbedömning</a>
+    visar just nu &mdash; period: {{ since }}{% if include_unreviewed %}, inklusive ogranskade{% endif %}.
+    Byt period på den sidan om du vill sammanfatta ett annat underlag.
+  </p>
+
+  <div class="card">
+    <h3>AI-sammanfattning (Llama 3.1 8B, lokal modell via Ollama)</h3>
+    {% if narrative %}
+      <p>{{ narrative }}</p>
+      <p class="disclaimer">
+        AI-genererad text baserad på det regelbaserade underlaget &mdash;
+        den ändrar inte hotnivån. Kontrollera alltid mot originalhändelserna.
+      </p>
+      <form method="post" action="{{ url_for('events.summary_narrative') }}" style="display:inline">
+        <input type="hidden" name="since" value="{{ since }}">
+        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+        <input type="hidden" name="download" value="pdf">
+        <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ladda ner PDF med AI-sammanfattning</button>
+      </form>
+      <form method="post" action="{{ url_for('events.summary_narrative') }}" style="display:inline">
+        <input type="hidden" name="since" value="{{ since }}">
+        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+        <input type="hidden" name="download" value="markdown">
+        <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ladda ner Markdown med AI-sammanfattning</button>
+      </form>
+      <form method="post" action="{{ url_for('events.summary_narrative') }}" style="display:inline">
+        <input type="hidden" name="since" value="{{ since }}">
+        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+        <input type="hidden" name="download" value="text">
+        <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ladda ner textfil med AI-sammanfattning</button>
+      </form>
+      <p class="actions">
+        <form method="post" action="{{ url_for('events.summary_narrative') }}" style="display:inline">
+          <input type="hidden" name="since" value="{{ since }}">
+          <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+          <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Generera igen</button>
+        </form>
+      </p>
+    {% else %}
+      <p style="font-size:0.85rem;color:#666">
+        Kör en lokal Llama 3.1 8B-modell via Ollama (t.ex. <code>ollama serve</code>,
+        modellen hämtad med <code>ollama pull llama3.1</code>) och skapa en
+        läsbar löptext av underlaget ovan. Hotnivån och poängen ändras inte
+        av detta &mdash; modellen sammanfattar bara samma regelbaserade resultat.
+        Kan ta en stund beroende på din dator.
+      </p>
+      <form method="post" action="{{ url_for('events.summary_narrative') }}">
+        <input type="hidden" name="since" value="{{ since }}">
+        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+        <button type="submit">Generera AI-sammanfattning</button>
+      </form>
+    {% endif %}
+  </div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Skapa rapport{% endblock %}
+{% block content %}
+  <h1>Skapa rapport</h1>
+  <div class="card">
+    <form method="post">
+      <label for="since">Tidsperiod</label>
+      <select id="since" name="since">
+        <option value="24h">Senaste 24 timmarna</option>
+        <option value="7d" selected>Senaste 7 dagarna</option>
+        <option value="30d">Senaste 30 dagarna</option>
+        <option value="all">All tid</option>
+      </select>
+
+      <label for="format">Format</label>
+      <select id="format" name="format">
+        <option value="pdf">PDF</option>
+        <option value="markdown">Markdown</option>
+        <option value="text">Textfil</option>
+      </select>
+
+      <label>
+        <input type="checkbox" name="include_unreviewed" style="width:auto;display:inline;vertical-align:middle">
+        Inkludera händelser som inte har markerats som granskade
+      </label>
+
+      <div class="actions">
+        <button type="submit">Skapa</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Skicka till Signal</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Skickar rapporten som PDF till Signal-gruppen
+      <strong>{{ report_group_name }}</strong>.
+    </p>
+    <form method="post" action="{{ url_for('events.report_send') }}">
+      <label for="send_since">Tidsperiod</label>
+      <select id="send_since" name="since">
+        <option value="24h">Senaste 24 timmarna</option>
+        <option value="7d" selected>Senaste 7 dagarna</option>
+        <option value="30d">Senaste 30 dagarna</option>
+        <option value="all">All tid</option>
+      </select>
+
+      <label>
+        <input type="checkbox" name="include_unreviewed" style="width:auto;display:inline;vertical-align:middle">
+        Inkludera händelser som inte har markerats som granskade
+      </label>
+
+      <div class="actions">
+        <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Skicka till Signal</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}
