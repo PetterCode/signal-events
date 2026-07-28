@@ -1,0 +1,30 @@
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 090247
+Stund: 090247
+Ställe: Trådlarm vid Östra grinden
+Styrka: -
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway
+
+---
+
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 091139
+Stund: 091139
+Ställe: Rörelsedetektor vid Skogsbrynet vid förrådet
+Styrka: -
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway
+
+---
+
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 091958
+Stund: 091958
+Ställe: Kamera vid Huvudentrén
+Styrka: 1
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway

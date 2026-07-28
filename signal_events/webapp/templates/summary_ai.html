@@ -1,59 +1,65 @@
 {% extends "base.html" %}
-{% block title %}AI-sammanfattning{% endblock %}
+{% block title %}AI-analys{% endblock %}
 {% block content %}
-  <h1>AI-sammanfattning</h1>
+  <h1>AI-analys</h1>
   <p style="font-size:0.85rem;color:#666">
-    Baseras på samma underlag som <a href="{{ url_for('events.summary', since=since, include_unreviewed=1 if include_unreviewed else 0) }}">Sammanställd hotbedömning</a>
-    visar just nu &mdash; period: {{ since }}{% if include_unreviewed %}, inklusive ogranskade{% endif %}.
-    Byt period på den sidan om du vill sammanfatta ett annat underlag.
+    Chatbot (Llama 3.1 8B, lokal modell via Ollama) med tillgång till enhetens
+    sparade händelser, enhetens egen hotbedömningshistorik (nuvarande och
+    äldre) samt rapporter mottagna från angränsande enheter (nuvarande och
+    äldre). Underlaget skickas till modellen på nytt vid varje fråga, så
+    svaren speglar alltid det som är sparat just nu.
   </p>
 
   <div class="card">
-    <h3>AI-sammanfattning (Llama 3.1 8B, lokal modell via Ollama)</h3>
-    {% if narrative %}
-      <p>{{ narrative }}</p>
-      <p class="disclaimer">
-        AI-genererad text baserad på det regelbaserade underlaget &mdash;
-        den ändrar inte hotnivån. Kontrollera alltid mot originalhändelserna.
-      </p>
-      <form method="post" action="{{ url_for('events.summary_narrative') }}" style="display:inline">
-        <input type="hidden" name="since" value="{{ since }}">
-        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
-        <input type="hidden" name="download" value="pdf">
-        <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ladda ner PDF med AI-sammanfattning</button>
-      </form>
-      <form method="post" action="{{ url_for('events.summary_narrative') }}" style="display:inline">
-        <input type="hidden" name="since" value="{{ since }}">
-        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
-        <input type="hidden" name="download" value="markdown">
-        <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ladda ner Markdown med AI-sammanfattning</button>
-      </form>
-      <form method="post" action="{{ url_for('events.summary_narrative') }}" style="display:inline">
-        <input type="hidden" name="since" value="{{ since }}">
-        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
-        <input type="hidden" name="download" value="text">
-        <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ladda ner textfil med AI-sammanfattning</button>
-      </form>
-      <p class="actions">
-        <form method="post" action="{{ url_for('events.summary_narrative') }}" style="display:inline">
-          <input type="hidden" name="since" value="{{ since }}">
-          <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
-          <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Generera igen</button>
+    <div class="chat-log">
+      {% if not chat_history %}
+        <p class="chat-empty">
+          Inget skrivet ännu &mdash; ställ en fråga nedan, t.ex. "Har vi sett
+          det här fordonet tidigare?" eller "Hur har hotnivån utvecklats den
+          senaste månaden?".
+        </p>
+      {% endif %}
+      {% for message in chat_history|reverse %}
+        <div class="chat-message chat-message-{{ message.role }}">
+          <span class="chat-message-role">{{ "Du" if message.role == "user" else "AI-analys" }}</span>
+          {{ message.content }}
+        </div>
+      {% endfor %}
+      {% if pending and not failed %}
+        <p class="chat-empty">AI-analys tänker... (kan ta upp till någon minut)</p>
+      {% endif %}
+    </div>
+
+    {% if pending %}
+      {% if failed %}
+        <form method="post" action="{{ url_for('events.summary_ai_respond') }}">
+          <button type="submit">Försök igen</button>
         </form>
-      </p>
+      {% else %}
+        <form id="ai-respond-form" method="post" action="{{ url_for('events.summary_ai_respond') }}" style="display:none"></form>
+        <script>document.getElementById("ai-respond-form").submit();</script>
+      {% endif %}
     {% else %}
-      <p style="font-size:0.85rem;color:#666">
-        Kör en lokal Llama 3.1 8B-modell via Ollama (t.ex. <code>ollama serve</code>,
-        modellen hämtad med <code>ollama pull llama3.1</code>) och skapa en
-        läsbar löptext av underlaget ovan. Hotnivån och poängen ändras inte
-        av detta &mdash; modellen sammanfattar bara samma regelbaserade resultat.
-        Kan ta en stund beroende på din dator.
-      </p>
-      <form method="post" action="{{ url_for('events.summary_narrative') }}">
-        <input type="hidden" name="since" value="{{ since }}">
-        <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
-        <button type="submit">Generera AI-sammanfattning</button>
+      <form method="post" action="{{ url_for('events.summary_ai_chat') }}">
+        <div class="chat-input-row">
+          <textarea name="message" placeholder="Skriv en fråga om händelser eller hotbedömningar..." required></textarea>
+          <button type="submit">Skicka</button>
+        </div>
       </form>
     {% endif %}
+
+    {% if chat_history %}
+      <p class="actions">
+        <form method="post" action="{{ url_for('events.summary_ai_clear') }}" style="display:inline">
+          <button type="submit" class="btn-secondary">Rensa konversation</button>
+        </form>
+      </p>
+    {% endif %}
+
+    <p class="disclaimer">
+      AI-genererade svar baserade på det regelbaserade underlaget &mdash;
+      modellen beslutar inte och ändrar inte den fastställda hotnivån.
+      Kontrollera alltid mot originalhändelserna och de sparade rapporterna.
+    </p>
   </div>
 {% endblock %}

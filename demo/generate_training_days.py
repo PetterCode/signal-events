@@ -2,12 +2,20 @@
 
 - `demo/training_days/dag_01.txt` .. `dag_10.txt`, each ~30 reports in
   7S-labeled format, for this unit's own incident stream.
+- `demo/training_days/dag_01_sensor.txt` .. `dag_10_sensor.txt`, each 3
+  automated sensor-trigger reports (tripwire, motion detector, camera) in
+  the same 7S format, reported by a sensor gateway rather than a guard --
+  optional, brought in via the "Inkludera sensorhändelser" toggle on
+  Demo och övning rather than always included with the day's human story.
 - `demo/training_days/adjacent_status.json`, one status report per day
   from each of two adjacent units ("2.Kompani", "3.Kompani"), for the
   "Status från angränsande enheter" card on the summary page.
+- `demo/training_days/event_images.json`, TNR -> image filename for
+  whichever events (human or sensor) have a cartoon-style photo attached
+  (see generate_training_images.py).
 
-Both are read by the "Dag 1".."Dag 10" import buttons on the
-Importera-från-fil page (see webapp/routes.py:import_training_day).
+All of these are read by the "Dag 1".."Dag 10" import buttons on the
+Demo och övning page (see webapp/routes.py:import_training_day).
 
 The story: mostly mundane guard-log noise (wildlife, deliveries, routine
 patrols) every day, with a small number of deliberate "signal" events
@@ -214,6 +222,20 @@ def _noise_event(rng: random.Random, guard: _NoiseClusterGuard) -> dict:
 VAN_SYMBOL = "Grå skåpbil"
 PERSON_SYMBOL = "Mörka kläder, mörk keps, mörk ryggsäck"
 
+# Each signal event may carry an "image" key naming a file under
+# demo/training_days/images/ (see generate_training_images.py) -- a
+# cartoon stand-in for a phone photo the guard would attach. Not every
+# entry gets one: the story's mundane noise events never do, and a few
+# signal events (the two ordinary-looking van-passing-by ones) are left
+# without a photo too, same as a real guard wouldn't necessarily always
+# think to snap one.
+IMG_VAN = "van.png"
+IMG_PERSON = "dark_figure.png"
+IMG_CUT_FENCE = "cut_fence.png"
+IMG_ARMED_SINGLE = "armed_single.png"
+IMG_ARMED_PAIR = "armed_pair.png"
+IMG_BROKEN_LOCK = "broken_lock.png"
+
 SIGNAL_EVENTS: dict[int, list[dict]] = {
     3: [
         dict(place="Norra vägen", styrka="1", slag="Skåpbil",
@@ -225,33 +247,34 @@ SIGNAL_EVENTS: dict[int, list[dict]] = {
         dict(place="Östra grinden", styrka="1", slag="Skåpbil",
              activity="Saktade ner vid grinden innan den körde vidare",
              symbol=VAN_SYMBOL, reg_nr="QAB456",
-             next_steps="Noterat i vaktloggen"),
+             next_steps="Noterat i vaktloggen", image=IMG_VAN),
     ],
     5: [
         dict(place="Västra infarten", styrka="1", slag="Skåpbil",
              activity="Stannade en kort stund utanför infarten innan den körde vidare",
              symbol=VAN_SYMBOL, reg_nr="QAB456",
-             next_steps="Fortsatt uppmärksamhet vid infarten"),
+             next_steps="Fortsatt uppmärksamhet vid infarten", image=IMG_VAN),
         dict(place="Skogsbrynet vid förrådet", styrka="1", slag="Person",
              activity="Fotograferade stängslet under en längre stund",
              symbol=PERSON_SYMBOL, reg_nr=None,
-             next_steps="Noterat, fortsatt uppmärksamhet"),
+             next_steps="Noterat, fortsatt uppmärksamhet", image=IMG_PERSON),
     ],
     6: [
         dict(place="Huvudentrén", styrka="1", slag="Person",
              activity="Observerade entrén och antecknade i ett block",
              symbol=PERSON_SYMBOL, reg_nr=None,
-             next_steps="Bildmaterial sparat, fortsatt bevakning"),
+             next_steps="Bildmaterial sparat, fortsatt bevakning", image=IMG_PERSON),
         dict(place="Södra hörnet av stängslet", styrka="-", slag="Skadegörelse",
              activity="Klippt stängsel upptäckt vid kvällsrond",
              symbol="Hål i stängslet, ca 1 meter", reg_nr=None,
-             next_steps="Teknisk avdelning kontaktad, ökad bevakning av området"),
+             next_steps="Teknisk avdelning kontaktad, ökad bevakning av området",
+             image=IMG_CUT_FENCE),
     ],
     7: [
         dict(place="Bortre parkeringen", styrka="1", slag="Beväpnad person",
              activity="Siktades kortvarigt innan personen försvann in i skogen",
              symbol="Bar vad som såg ut som ett handeldvapen", reg_nr=None,
-             next_steps="Polis underrättad, skärpt bevakning"),
+             next_steps="Polis underrättad, skärpt bevakning", image=IMG_ARMED_SINGLE),
     ],
     8: [
         dict(place="Vid transformatorstationen", styrka="1", slag="Skåpbil",
@@ -263,26 +286,34 @@ SIGNAL_EVENTS: dict[int, list[dict]] = {
         dict(place="Norra skogsbrynet", styrka="2", slag="Beväpnade personer",
              activity="Avvek söderut mot allmän väg vid upptäckt",
              symbol="En av personerna bar ett gevär", reg_nr=None,
-             next_steps="Polis underrättad, förhöjd beredskap"),
+             next_steps="Polis underrättad, förhöjd beredskap", image=IMG_ARMED_PAIR),
         dict(place="Huvudentrén", styrka="1", slag="Person",
              activity="Fotograferade kameror och belysning vid entrén",
              symbol=PERSON_SYMBOL, reg_nr=None,
-             next_steps="Bildmaterial sparat, förhöjd beredskap"),
+             next_steps="Bildmaterial sparat, förhöjd beredskap", image=IMG_PERSON),
     ],
     10: [
         dict(place="Förrådsbyggnaden", styrka="-", slag="Skadegörelse",
              activity="Uppbrutet lås vid förrådets bakdörr upptäckt",
              symbol="Skador på dörrkarm", reg_nr=None,
-             next_steps="Teknisk avdelning kontaktad, förhöjd beredskap kvarstår"),
+             next_steps="Teknisk avdelning kontaktad, förhöjd beredskap kvarstår",
+             image=IMG_BROKEN_LOCK),
         dict(place="Kajen", styrka="1", slag="Skåpbil",
              activity="Sågs lasta okänt gods innan den körde iväg",
              symbol=VAN_SYMBOL, reg_nr="QAB456",
-             next_steps="Polis underrättad"),
+             next_steps="Polis underrättad", image=IMG_VAN),
     ],
 }
 
 
 def _render_block(day: int, reporter: str, tnr: str, event: dict) -> str:
+    """Slag/Sysselsättning/Symbol/Sedan are only included when the event
+    actually has something to say there -- same treatment Reg.Nr already
+    got. Every noise/signal (human-reported) event fills all of these in,
+    but the sensor-gateway events (see _tripwire_event/_motion_event/
+    _camera_event) leave Slag/Symbol/Sedan blank -- a bare-bones automated
+    integration, not a guard writing prose about what/why -- and give
+    Sysselsättning only the same generic SENSOR_ACTIVITY line every time."""
     lines = [
         "Till: Stabsassistent",
         f"Från: {reporter}",
@@ -290,18 +321,30 @@ def _render_block(day: int, reporter: str, tnr: str, event: dict) -> str:
         f"Stund: {tnr}",
         f"Ställe: {event['place']}",
         f"Styrka: {event['styrka']}",
-        f"Slag: {event['slag']}",
-        f"Sysselsättning: {event['activity']}",
-        f"Symbol: {event['symbol']}",
     ]
+    if event.get("slag"):
+        lines.append(f"Slag: {event['slag']}")
+    if event.get("activity"):
+        lines.append(f"Sysselsättning: {event['activity']}")
+    if event.get("symbol"):
+        lines.append(f"Symbol: {event['symbol']}")
     if event.get("reg_nr"):
         lines.append(f"Reg.Nr: {event['reg_nr']}")
     lines.append(f"Sagesman: {reporter}")
-    lines.append(f"Sedan: {event['next_steps']}")
+    if event.get("next_steps"):
+        lines.append(f"Sedan: {event['next_steps']}")
     return "\n".join(lines)
 
 
-def generate_day(day: int, rng: random.Random, guard: _NoiseClusterGuard) -> str:
+def generate_day(
+    day: int, rng: random.Random, guard: _NoiseClusterGuard
+) -> tuple[str, list[dict]]:
+    """Returns the day's report text plus a list of {"tnr", "image"}
+    entries for whichever events (always signal events, never noise) had
+    an "image" key -- the caller writes these out as event_images.json,
+    a side-channel manifest read by webapp/routes.py's
+    import_training_day the same way it already reads adjacent_status.json,
+    so a report's own TNR is what ties it back to its picture after import."""
     signal = SIGNAL_EVENTS.get(day, [])
     noise_count = EVENTS_PER_DAY - len(signal)
     events = [_noise_event(rng, guard) for _ in range(noise_count)] + list(signal)
@@ -310,11 +353,110 @@ def generate_day(day: int, rng: random.Random, guard: _NoiseClusterGuard) -> str
     timed.sort(key=lambda pair: pair[0])
 
     blocks = []
+    images = []
     for tnr, event in timed:
         reporter = rng.choice(GUARDS)
         blocks.append(_render_block(day, reporter, tnr, event))
+        if event.get("image"):
+            images.append({"tnr": tnr, "image": event["image"]})
 
-    return "\n\n---\n\n".join(blocks) + "\n"
+    return "\n\n---\n\n".join(blocks) + "\n", images
+
+
+# Automated sensor-trigger events -- a separate, optional layer on top of
+# the human-reported story above. Written to their own per-day file
+# (dag_NN_sensor.txt) rather than mixed into dag_NN.txt, so the "Inkludera
+# sensorhändelser" toggle on Demo och övning (see webapp/routes.py's
+# import_training_day) can bring them in or leave them out independently
+# of the human-report story, which stays identical either way. Reported
+# by SENSOR_GATEWAY rather than one of GUARDS, since these were never
+# filed by a person. Deliberately bare-bones: Slag/Sysselsättning/Symbol/
+# Sedan are all left blank (see _render_block's handling of that) --
+# an automated gateway integration reporting "something happened at
+# place X" rather than writing prose about what/why, unlike a guard's
+# own report. The only place any of that ever shows up is the camera's
+# capture, which cycles through car/person/deer and gets a matching
+# photo attached (see demo/generate_training_images.py) -- never as text.
+SENSOR_GATEWAY = "Sensorgateway"
+
+TRIPWIRE_PLACES = [
+    "Trådlarm vid Östra grinden", "Trådlarm vid Västra infarten",
+    "Trådlarm bakom förrådet", "Trådlarm vid Bommen vid infarten",
+]
+MOTION_PLACES = [
+    "Rörelsedetektor vid Skogsbrynet vid förrådet", "Rörelsedetektor vid Bortre parkeringen",
+    "Rörelsedetektor vid transformatorstationen", "Rörelsedetektor vid Kajen",
+]
+CAMERA_PLACES = [
+    "Kamera vid Huvudentrén", "Kamera vid Östra grinden",
+    "Kamera vid Kajen", "Kamera vid Vaktkuren",
+]
+CAMERA_IMAGES = ["camera_car.png", "camera_person.png", "camera_deer.png"]
+
+# Fixed, distinctive times (day + HHMM) rather than random ones -- keeps
+# this whole layer free of any RNG dependency (genuinely "static", as
+# asked for) and, since they're clustered pre-dawn/midday/evening rather
+# than spread across all 1440 minutes like the human noise generator,
+# they're vanishingly unlikely to collide with a human report's TNR for
+# the same day (verified empirically after generation, see test_training_days.py).
+SENSOR_TNR_SUFFIX = {"tripwire": "0247", "motion": "1139", "camera": "1958"}
+
+# The one field every sensor event does fill in -- Slag/Symbol/Sedan stay
+# blank regardless of sensor type, but a bare "something happened" with
+# no Sysselsättning at all read as too little even for an automated
+# gateway, so this generic line stands in for all three sensor types.
+SENSOR_ACTIVITY = "Sensor aktiverad"
+
+
+def _tripwire_event(day: int) -> dict:
+    return dict(
+        place=TRIPWIRE_PLACES[(day - 1) % len(TRIPWIRE_PLACES)], styrka="-", slag="",
+        activity=SENSOR_ACTIVITY, symbol="", reg_nr=None, next_steps="",
+    )
+
+
+def _motion_event(day: int) -> dict:
+    return dict(
+        place=MOTION_PLACES[(day - 1) % len(MOTION_PLACES)], styrka="-", slag="",
+        activity=SENSOR_ACTIVITY, symbol="", reg_nr=None, next_steps="",
+    )
+
+
+def _camera_event(day: int) -> tuple[dict, str]:
+    """Slag/Symbol/Sedan stay blank like the other two sensor types --
+    what the camera actually saw (see CAMERA_IMAGES) only shows up as
+    the attached photo, not as text; Sysselsättning is the same generic
+    SENSOR_ACTIVITY line every sensor event gets."""
+    event = dict(
+        place=CAMERA_PLACES[(day - 1) % len(CAMERA_PLACES)], styrka="1", slag="",
+        activity=SENSOR_ACTIVITY, symbol="", reg_nr=None, next_steps="",
+    )
+    image = CAMERA_IMAGES[(day - 1) % len(CAMERA_IMAGES)]
+    return event, image
+
+
+def generate_sensor_day(day: int) -> tuple[str, list[dict]]:
+    """A day's automated sensor-trigger events: one tripwire, one motion
+    detector, one camera. Returns the day's report text plus a list of
+    {"tnr", "image"} entries (only ever the camera's), in the exact same
+    shape generate_day returns for its own images -- both get merged into
+    the same event_images.json manifest."""
+    events_by_kind = {
+        "tripwire": _tripwire_event(day),
+        "motion": _motion_event(day),
+    }
+    camera_event, camera_image = _camera_event(day)
+    events_by_kind["camera"] = camera_event
+
+    blocks = []
+    images = []
+    for kind, event in events_by_kind.items():
+        tnr = f"{day:02d}{SENSOR_TNR_SUFFIX[kind]}"
+        blocks.append(_render_block(day, SENSOR_GATEWAY, tnr, event))
+        if kind == "camera":
+            images.append({"tnr": tnr, "image": camera_image})
+
+    return "\n\n---\n\n".join(blocks) + "\n", images
 
 
 ADJACENT_UNITS = {
@@ -410,11 +552,14 @@ def main() -> None:
         for event in events:
             guard.accept(event["slag"], event["symbol"])
 
+    event_images: dict[str, list[dict]] = {}
     for day in range(1, 11):
-        text = generate_day(day, rng, guard)
+        text, images = generate_day(day, rng, guard)
         path = OUT_DIR / f"dag_{day:02d}.txt"
         path.write_text(text, encoding="utf-8")
-        print(f"Wrote {path} ({text.count('---') + 1} reports)")
+        if images:
+            event_images[str(day)] = images
+        print(f"Wrote {path} ({text.count('---') + 1} reports, {len(images)} with an image)")
 
     adjacent_data = {str(day): build_adjacent_reports_for_day(day) for day in range(1, 11)}
     adjacent_path = OUT_DIR / "adjacent_status.json"
@@ -422,6 +567,22 @@ def main() -> None:
         json.dumps(adjacent_data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(f"Wrote {adjacent_path} (2 adjacent units x 10 days)")
+
+    # Sensor events are a separate optional file per day (see
+    # generate_sensor_day's docstring) -- generated with no RNG at all, so
+    # this loop can never perturb the human-report generation above it,
+    # regardless of order.
+    for day in range(1, 11):
+        sensor_text, sensor_images = generate_sensor_day(day)
+        sensor_path = OUT_DIR / f"dag_{day:02d}_sensor.txt"
+        sensor_path.write_text(sensor_text, encoding="utf-8")
+        if sensor_images:
+            event_images.setdefault(str(day), []).extend(sensor_images)
+        print(f"Wrote {sensor_path} ({len(sensor_images)} with an image)")
+
+    images_path = OUT_DIR / "event_images.json"
+    images_path.write_text(json.dumps(event_images, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Wrote {images_path} ({sum(len(v) for v in event_images.values())} events with images)")
 
 
 if __name__ == "__main__":

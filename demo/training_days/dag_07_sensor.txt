@@ -1,0 +1,30 @@
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 070247
+Stund: 070247
+Ställe: Trådlarm bakom förrådet
+Styrka: -
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway
+
+---
+
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 071139
+Stund: 071139
+Ställe: Rörelsedetektor vid transformatorstationen
+Styrka: -
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway
+
+---
+
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 071958
+Stund: 071958
+Ställe: Kamera vid Kajen
+Styrka: 1
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway

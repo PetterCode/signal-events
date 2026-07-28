@@ -73,6 +73,24 @@
   </div>
 
   <div class="card">
+    <h3>Ollama-port</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Porten den lokala Ollama-servern nås på (AI-analys-chatten och
+      <span class="mono">--llm</span>-flaggan i CLI:t). Ändra den här om du
+      kör <span class="mono">ollama serve</span> på en annan port än
+      standard. Gäller direkt, ingen omstart krävs.
+    </p>
+    <form method="post" action="{{ url_for('events.save_ollama_port') }}">
+      <label for="ollama_port">Port</label>
+      <input type="text" id="ollama_port" name="ollama_port" value="{{ ollama_port }}" inputmode="numeric" pattern="[0-9]*">
+
+      <div class="actions">
+        <button type="submit">Spara Ollama-port</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
     <h3>Ytterligare användare</h3>
     <p style="font-size:0.85rem;color:#666">
       Konton för gäster som ansluter till webbgränssnittet från samma

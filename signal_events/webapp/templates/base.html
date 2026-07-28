@@ -23,7 +23,9 @@
     .badge-level-green { background: #d7f0d7; color: #1e5c1e; }
     .badge-level-yellow { background: #fde2b6; color: #7a4900; }
     .badge-level-red { background: #f8d7d7; color: #7a1e1e; }
+    .badge-level-unknown { background: #e0e0e0; color: #555; }
     .badge-demo { background: #e0d7f0; color: #4b2e83; }
+    .header-adjacent { font-size: 0.75rem; }
     .card { background: #fff; padding: 1rem 1.5rem; border-radius: 6px; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
     label { display: block; margin-top: 0.75rem; font-size: 0.85rem; font-weight: 600; color: #333; }
     input[type=text], input[type=password], select, textarea { width: 100%; padding: 0.4rem; margin-top: 0.2rem; box-sizing: border-box; font-size: 0.9rem; }
@@ -51,6 +53,14 @@
     .training-day-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; }
     .training-day-buttons form { display: flex; align-items: center; gap: 0.4rem; }
     button:disabled { background: #b7bfc6; cursor: not-allowed; }
+    .chat-log { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1rem; }
+    .chat-message { max-width: 80%; padding: 0.6rem 0.9rem; border-radius: 8px; font-size: 0.9rem; white-space: pre-wrap; }
+    .chat-message-user { align-self: flex-end; background: #1a2733; color: #fff; }
+    .chat-message-assistant { align-self: flex-start; background: #eef1f4; color: #1a1a1a; }
+    .chat-message-role { display: block; font-size: 0.7rem; opacity: 0.7; margin-bottom: 0.2rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .chat-input-row { display: flex; gap: 0.5rem; align-items: flex-start; }
+    .chat-input-row textarea { min-height: 2.5rem; margin-top: 0; }
+    .chat-empty { font-size: 0.85rem; color: #666; }
   </style>
 </head>
 <body>
@@ -61,7 +71,7 @@
         <a href="{{ url_for('events.list_events') }}">Händelser</a>
         <a href="{{ url_for('events.report') }}">Skapa rapport</a>
         <a href="{{ url_for('events.summary') }}">Sammanställd hotbedömning</a>
-        <a href="{{ url_for('events.summary_ai') }}">AI-sammanfattning</a>
+        <a href="{{ url_for('events.summary_ai') }}">AI-analys</a>
         {% if header_is_admin %}
           <a href="{{ url_for('events.demo_import') }}">Demo och övning</a>
           <a href="{{ url_for('events.system_log') }}">Systemlogg</a>
@@ -90,6 +100,22 @@
         </form>
       {% endif %}
     </div>
+    {% if header_adjacent_statuses %}
+      <div class="header-status header-adjacent">
+        <span>Angränsande enheter:</span>
+        {% for status in header_adjacent_statuses %}
+          <span class="badge badge-level-{{ status.level or 'unknown' }}">
+            {{ status.unit_name }}:
+            {% if status.level == "red" %}RÖD
+            {% elif status.level == "yellow" %}GUL
+            {% elif status.level == "green" %}GRÖN
+            {% else %}okänd
+            {% endif %}
+            &middot; mottagen {{ status.received_at }}
+          </span>
+        {% endfor %}
+      </div>
+    {% endif %}
   </header>
   <main>
     {% with messages = get_flashed_messages(with_categories=true) %}

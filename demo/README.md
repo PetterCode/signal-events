@@ -92,10 +92,40 @@ adjacent units rarely move in perfect lockstep. See
 `generate_training_days.py`'s `ADJACENT_UNITS`/`offset` if you want to
 change the shift or add a third unit.
 
+A handful of the notable "signal" events (the van, the person in dark
+clothing, the two sabotage signs, the two armed sightings) also come
+with a cartoon-style illustration attached — a stand-in for a phone photo
+a guard might take when filing that particular report — visible on that
+event's own page. See `demo/generate_training_images.py` for how they're
+drawn (plain Pillow shapes, no external assets/network) and
+`event_images.json` for which TNR in which day gets which image.
+
+An "Inkludera sensorhändelser" checkbox on the same page brings in each
+day's automated sensor-trigger reports too, separately from the human
+story: one tripwire, one motion detector, and one camera event per day
+(`dag_NN_sensor.txt`), all reported by "Sensorgateway" rather than a
+guard, in the same 7S format but deliberately bare-bones — Slag/Symbol/
+Sedan are all left blank, Sysselsättning is always the same generic
+"Sensor aktiverad" line, and the place name itself says which sensor
+type triggered ("Trådlarm vid...",
+"Rörelsedetektor vid...", "Kamera vid..."). The one exception is the
+camera: its capture cycles through a passing car/person/deer, and what
+it saw only ever shows up as the attached cartoon-style photo, never as
+text. See `generate_training_days.py`'s `generate_sensor_day`.
+
+These are also tagged `is_sensor` and never evaluated by the duplicate-
+report detector (`signal_events/duplicates.py`), even though several
+share identical place text and wording across different days (the same
+sensor firing repeatedly is a genuine, separate trigger each time, not
+double data entry) -- otherwise importing multiple days back-to-back in
+one sitting could wrongly flag same-cycle-position sensor events (e.g.
+day 1 and day 5, four apart) as duplicates of each other.
+
 Regenerate the files (deterministic, fixed random seed) with:
 
 ```bash
 python demo/generate_training_days.py
+python demo/generate_training_images.py
 ```
 
 ## Cleaning up

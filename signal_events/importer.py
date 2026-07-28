@@ -50,8 +50,15 @@ def import_text(
     text: str,
     filename: str,
     default_reported_by: Optional[str] = None,
+    is_sensor: bool = False,
 ) -> list[int]:
-    """Parse and store each report block in `text`. Returns the new event ids."""
+    """Parse and store each report block in `text`. Returns the new event
+    ids. `is_sensor=True` (used for the demo scenario's dag_NN_sensor.txt
+    files -- see webapp/routes.py:import_training_day) tags every
+    resulting event as coming from an automated sensor gateway rather
+    than a person, so duplicates.py never evaluates it: a sensor firing
+    the same templated message at the same place repeatedly is expected
+    and each trigger is a genuine, separate occurrence, not double entry."""
     event_ids: list[int] = []
     for i, block in enumerate(split_report_blocks(text)):
         sender, body = extract_sender_line(block)
@@ -66,5 +73,6 @@ def import_text(
             raw_json=json.dumps({"source": "file_import", "filename": filename}),
         )
         fields = parser.parse_event_fields(body, reported_by=reported_by)
+        fields["is_sensor"] = is_sensor
         event_ids.append(db.insert_event(conn, message_id=message_id, fields=fields))
     return event_ids

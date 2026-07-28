@@ -84,6 +84,16 @@
         Trivial (rutinhändelse utan betydelse &mdash; utesluts automatiskt ur rapporter)
       </label>
 
+      <label>
+        <input type="checkbox" name="mark_duplicate" {{ 'checked' if event.is_duplicate else '' }}
+               style="width:auto;display:inline;vertical-align:middle">
+        Dublett (matchar en annan händelse &mdash; utesluts automatiskt ur hotbedömningen)
+      </label>
+      <p style="font-size:0.8rem;color:#666;margin-top:0.2rem">
+        Sparas din markering här, oavsett vilken väg den går, skriver den
+        automatiska dublettkontrollen aldrig över den igen.
+      </p>
+
       <div class="actions">
         <button type="submit">Spara</button>
       </div>

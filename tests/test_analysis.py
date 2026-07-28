@@ -308,3 +308,22 @@ def test_notable_observations_do_not_affect_red_gating():
     assert summary.threat.armed_sightings == 0
     assert summary.threat.explosive_sightings == 0
     assert summary.threat.sabotage_sightings == 0
+
+
+def test_parse_adjacent_level_prefers_an_explicit_bedomning_line():
+    body = "Läget lugnt i vårt område.\nBedömning: RÖD -- återkommande allvarlig indikation."
+    assert analysis.parse_adjacent_level(body) == "red"
+
+
+def test_parse_adjacent_level_falls_back_to_most_severe_keyword_anywhere():
+    """No line literally starts with "Bedömning", but the text still
+    mentions a level -- and if it mentions more than one (e.g. describing
+    a change over time), the more severe one should win."""
+    body = "Läget har eskalerat från GRÖN till GUL under natten."
+    assert analysis.parse_adjacent_level(body) == "yellow"
+
+
+def test_parse_adjacent_level_returns_none_when_nothing_matches():
+    assert analysis.parse_adjacent_level("Inget särskilt att rapportera idag.") is None
+    assert analysis.parse_adjacent_level("") is None
+    assert analysis.parse_adjacent_level(None) is None

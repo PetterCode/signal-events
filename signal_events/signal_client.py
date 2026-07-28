@@ -104,13 +104,20 @@ def _envelope_group_id(inner: dict[str, Any]) -> Optional[str]:
 
 
 def ingest_envelope(
-    conn: sqlite3.Connection, envelope: dict[str, Any], group_id: Optional[str] = None
+    conn: sqlite3.Connection, envelope: dict[str, Any], group_id: Optional[str] = None,
+    is_sensor: bool = False,
 ) -> bool:
     """Store one envelope's data message (if any) and its attachments/parsed
     fields. Returns True if a new message was ingested.
 
     If `group_id` is given, only messages posted to that Signal group are
-    ingested -- direct messages and messages in other groups are skipped."""
+    ingested -- direct messages and messages in other groups are skipped.
+
+    `is_sensor=True` (see watch_multi's sensor-group call) tags the
+    resulting event so duplicates.py never evaluates it: an automated
+    sensor gateway firing the same templated message at the same place
+    repeatedly is expected, and each trigger is a genuine, separate
+    occurrence, not a person accidentally filing the same report twice."""
     inner = envelope.get("envelope", envelope)
     data_message = inner.get("dataMessage")
     if not data_message:
@@ -148,6 +155,7 @@ def ingest_envelope(
 
     reported_by = sender_name or sender_number
     fields = parser.parse_event_fields(body, reported_by=reported_by)
+    fields["is_sensor"] = is_sensor
     db.insert_event(conn, message_id=message_id, fields=fields)
     return True
 
@@ -439,7 +447,7 @@ def watch_multi(
                     incident_count += 1
                 if ingest_adjacent_report(conn, envelope, group_id=adjacent_group_id):
                     adjacent_count += 1
-                if ingest_envelope(conn, envelope, group_id=sensor_group_id):
+                if ingest_envelope(conn, envelope, group_id=sensor_group_id, is_sensor=True):
                     sensor_count += 1
         yield incident_count, adjacent_count, sensor_count
         iterations += 1

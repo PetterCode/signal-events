@@ -7,12 +7,20 @@ import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.environ.get("SIGNAL_EVENTS_DATA_DIR", PROJECT_ROOT / "data"))
+# .resolve() on all three of these: a relative SIGNAL_EVENTS_DATA_DIR (or
+# _DB_PATH/_ATTACHMENTS_DIR) would otherwise be stored as-is, relative to
+# whatever the process's CWD happened to be when it started -- fine for
+# writing files, but attachment_file's send_file(attachment["file_path"])
+# resolves relative paths against the Flask app's root_path (the
+# signal_events/webapp/ package directory), not the CWD, so a relative
+# DATA_DIR silently 404s/500s on every attachment despite the file
+# genuinely existing on disk.
+DATA_DIR = Path(os.environ.get("SIGNAL_EVENTS_DATA_DIR", PROJECT_ROOT / "data")).resolve()
 
-DB_PATH = Path(os.environ.get("SIGNAL_EVENTS_DB_PATH", DATA_DIR / "events.db"))
+DB_PATH = Path(os.environ.get("SIGNAL_EVENTS_DB_PATH", DATA_DIR / "events.db")).resolve()
 ATTACHMENTS_DIR = Path(
     os.environ.get("SIGNAL_EVENTS_ATTACHMENTS_DIR", DATA_DIR / "attachments")
-)
+).resolve()
 
 # Number linked/registered with signal-cli, e.g. "+15551234567". Only needed
 # for `sync`, which is the one command that requires network access.
@@ -41,7 +49,29 @@ SITE_NAME = os.environ.get("SIGNAL_EVENTS_SITE_NAME", "skyddsobjektet")
 # same as the rest of this tool, since Ollama serves the model from disk.
 OLLAMA_URL = os.environ.get("SIGNAL_EVENTS_OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("SIGNAL_EVENTS_OLLAMA_MODEL", "llama3.1:latest")
-OLLAMA_TIMEOUT_SECONDS = int(os.environ.get("SIGNAL_EVENTS_OLLAMA_TIMEOUT", "120"))
+
+# Ollama's own default context window (num_ctx) is much smaller than what
+# this model actually supports -- 2048/4096 tokens on a typical install --
+# and silently truncates whatever doesn't fit, with no error raised. The
+# AI-analys chat's underlag (saved events + report history, see
+# webapp/routes._build_ai_context) regularly runs to 10-20k+ tokens on a
+# real event log, so without an explicit override here Ollama would drop
+# most of it before the model ever sees it -- the model would answer from
+# a truncated fragment and look like it "can't see" older data, without
+# any error being raised anywhere. Verified against a real 301-event log:
+# 24576 was the smallest size that let the model correctly find and quote
+# the actual oldest event rather than a truncated fragment. Llama 3.1
+# itself supports up to 131072, but a bigger window costs real time on
+# CPU-only/modest hardware -- see OLLAMA_TIMEOUT_SECONDS below.
+OLLAMA_NUM_CTX = int(os.environ.get("SIGNAL_EVENTS_OLLAMA_NUM_CTX", "24576"))
+
+# A full, uncached underlag at the context size above can legitimately take
+# several minutes to process on CPU-only/modest hardware (measured on a
+# real ~300-event log while diagnosing truncation) -- 120s was too short
+# and would cut off a response that was still correctly on its way,
+# reporting it as a failure. Lower this back down if your hardware is
+# fast enough that you'd rather fail fast than wait.
+OLLAMA_TIMEOUT_SECONDS = int(os.environ.get("SIGNAL_EVENTS_OLLAMA_TIMEOUT", "300"))
 
 # Signal group `watch`/`serve --watch` poll incoming reports *from*.
 WATCH_GROUP_NAME = os.environ.get(

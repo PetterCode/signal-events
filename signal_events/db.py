@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import secrets
 import sqlite3
+import urllib.parse
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Iterator, Optional
@@ -47,6 +48,8 @@ CREATE TABLE IF NOT EXISTS events (
     is_trivial INTEGER NOT NULL DEFAULT 0,
     is_trivial_reviewed INTEGER NOT NULL DEFAULT 0,
     is_duplicate INTEGER NOT NULL DEFAULT 0,
+    is_duplicate_reviewed INTEGER NOT NULL DEFAULT 0,
+    is_sensor INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -151,6 +154,14 @@ REPORT_GROUP_NAME_KEY = "report_group_name"
 RECURRING_GROUP_NAME_KEY = "recurring_group_name"
 SENSOR_GROUP_NAME_KEY = "sensor_group_name"
 
+# Key used in the `settings` table for the local Ollama server's port --
+# edited via the web UI's Inställningar page, taking priority over
+# whatever port is in the SIGNAL_EVENTS_OLLAMA_URL env var default (see
+# config.OLLAMA_URL) when set. Only the port is stored/edited here (as a
+# string, since it's only ever spliced into a URL) -- the scheme and host
+# still come from config.OLLAMA_URL, same as every other Ollama setting.
+OLLAMA_PORT_KEY = "ollama_port"
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -175,6 +186,8 @@ def init_db() -> None:
         _migrate_add_column(conn, "events", "is_trivial", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "is_trivial_reviewed", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "is_duplicate", "INTEGER NOT NULL DEFAULT 0")
+        _migrate_add_column(conn, "events", "is_duplicate_reviewed", "INTEGER NOT NULL DEFAULT 0")
+        _migrate_add_column(conn, "events", "is_sensor", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "users", "last_seen", "TEXT")
         _migrate_summary_log_identity_columns(conn)
 
@@ -261,8 +274,8 @@ def insert_event(conn: sqlite3.Connection, message_id: int, fields: dict[str, An
         """INSERT INTO events
            (message_id, event_time, place, count, object, activity, marks,
             reported_by, next_steps, raw_text, needs_review, is_trivial,
-            is_duplicate, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            is_duplicate, is_sensor, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             message_id,
             fields.get("event_time"),
@@ -277,6 +290,7 @@ def insert_event(conn: sqlite3.Connection, message_id: int, fields: dict[str, An
             1 if fields.get("needs_review", True) else 0,
             1 if fields.get("is_trivial", False) else 0,
             1 if fields.get("is_duplicate", False) else 0,
+            1 if fields.get("is_sensor", False) else 0,
             ts,
             ts,
         ),
@@ -288,7 +302,7 @@ def update_event(conn: sqlite3.Connection, event_id: int, fields: dict[str, Any]
     columns = [
         "event_time", "place", "count", "object", "activity", "marks",
         "reported_by", "next_steps", "needs_review", "is_trivial",
-        "is_trivial_reviewed", "is_duplicate",
+        "is_trivial_reviewed", "is_duplicate", "is_duplicate_reviewed",
     ]
     updates = {k: v for k, v in fields.items() if k in columns}
     if not updates:
@@ -342,6 +356,15 @@ def get_attachment(conn: sqlite3.Connection, attachment_id: int) -> Optional[sql
     return conn.execute(
         "SELECT * FROM attachments WHERE id = ?", (attachment_id,)
     ).fetchone()
+
+
+def list_message_ids_with_attachments(conn: sqlite3.Connection) -> set[int]:
+    """Every message id that has at least one attachment -- a single
+    query, used instead of calling list_attachments_for_message once per
+    event (e.g. in webapp/routes._build_ai_context, which needs to know
+    per-event whether a photo exists across the whole event log)."""
+    rows = conn.execute("SELECT DISTINCT message_id FROM attachments").fetchall()
+    return {row["message_id"] for row in rows}
 
 
 def delete_event(conn: sqlite3.Connection, event_id: int) -> bool:
@@ -509,6 +532,19 @@ def set_recurring_group_name(conn: sqlite3.Connection, value: str) -> None:
     set_setting(conn, RECURRING_GROUP_NAME_KEY, value.strip())
 
 
+def get_ollama_port(conn: sqlite3.Connection) -> str:
+    """The port to reach the local Ollama server on, as a string -- the
+    stored override if one's been set on Inställningar, otherwise
+    whatever port is in config.OLLAMA_URL (defaulting to Ollama's own
+    standard 11434 if that URL somehow has none)."""
+    default_port = urllib.parse.urlsplit(config.OLLAMA_URL).port or 11434
+    return get_setting(conn, OLLAMA_PORT_KEY) or str(default_port)
+
+
+def set_ollama_port(conn: sqlite3.Connection, value: str) -> None:
+    set_setting(conn, OLLAMA_PORT_KEY, value.strip())
+
+
 def get_sensor_group_name(conn: sqlite3.Connection) -> str:
     return get_setting(conn, SENSOR_GROUP_NAME_KEY) or config.SENSOR_GROUP_NAME
 
@@ -650,6 +686,27 @@ def list_latest_adjacent_reports_per_unit(
         seen.add(key)
         latest.append(row)
     return latest
+
+
+def list_adjacent_reports(
+    conn: sqlite3.Connection, since: Optional[str] = None, limit: Optional[int] = None
+) -> list[sqlite3.Row]:
+    """Full history of reports received from adjacent units, newest
+    first -- unlike list_latest_adjacent_reports_per_unit this is not
+    collapsed to one row per unit, and includes rows with no identified
+    unit_name (plain chat in the shared group). Used to give the AI-chat
+    tab (see webapp/routes.py's _build_ai_context) both current and
+    older adjacent-unit reports, not just each unit's latest."""
+    query = "SELECT * FROM adjacent_reports WHERE 1=1"
+    params: list[Any] = []
+    if since is not None:
+        query += " AND received_at >= ?"
+        params.append(since)
+    query += " ORDER BY signal_timestamp DESC"
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+    return conn.execute(query, params).fetchall()
 
 
 def insert_summary_log_entry(

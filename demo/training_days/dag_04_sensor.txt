@@ -1,0 +1,30 @@
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 040247
+Stund: 040247
+Ställe: Trådlarm vid Bommen vid infarten
+Styrka: -
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway
+
+---
+
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 041139
+Stund: 041139
+Ställe: Rörelsedetektor vid Kajen
+Styrka: -
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway
+
+---
+
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 041958
+Stund: 041958
+Ställe: Kamera vid Vaktkuren
+Styrka: 1
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway

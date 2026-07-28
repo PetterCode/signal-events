@@ -506,3 +506,38 @@ def apply_threat_override(summary: Summary, override: dict | None) -> Summary:
         note += f" Anteckning: {override['notes']}"
     threat = replace(summary.threat, level=override["level"], reasons=[note, *summary.threat.reasons])
     return replace(summary, threat=threat)
+
+
+# Ordered most-to-least severe: an adjacent unit's status report is free
+# text, not a structured field, so if it mentions more than one level
+# (e.g. summarizing a recent change, "läget har lugnat ned sig, från GUL
+# till GRÖN") the more severe one wins rather than whichever happens to
+# appear first -- consistent with this app's own rule that RED requires
+# no benefit of the doubt.
+_ADJACENT_LEVEL_KEYWORDS = [("röd", "red"), ("gul", "yellow"), ("grön", "green")]
+
+
+def parse_adjacent_level(body: str | None) -> str | None:
+    """Best-effort extraction of a GRÖN/GUL/RÖD level from an adjacent
+    unit's free-text status report for the header status strip -- these
+    arrive as plain prose (see demo/generate_training_days.py's own
+    "Bedömning: ..." convention, which real adjacent units aren't
+    guaranteed to follow), not a structured field like this unit's own
+    threat level. Prefers a line that actually starts with "Bedömning"
+    if there is one (the clearest, most deliberate signal), otherwise
+    falls back to the most severe level keyword mentioned anywhere in
+    the body. Returns None -- not a guess -- when nothing matches at
+    all, so the caller can show "okänd" rather than a fabricated level."""
+    if not body:
+        return None
+    for line in body.splitlines():
+        stripped_lower = line.strip().lower()
+        if stripped_lower.startswith("bedömning"):
+            for keyword, level in _ADJACENT_LEVEL_KEYWORDS:
+                if keyword in stripped_lower:
+                    return level
+    lowered = body.lower()
+    for keyword, level in _ADJACENT_LEVEL_KEYWORDS:
+        if keyword in lowered:
+            return level
+    return None

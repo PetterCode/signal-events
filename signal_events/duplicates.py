@@ -15,6 +15,21 @@ just a similar theme), and they were logged close together in time --
 the same incident described twice, not the same subject seen again
 later. Within a cluster of matches, the earliest-logged event is kept
 as the canonical, non-duplicate copy.
+
+Events flagged `is_sensor` (see db.insert_event/signal_client.py) are
+never evaluated at all -- an automated sensor is *expected* to fire the
+same templated message at the same place again and again, and each
+trigger is a genuine, separate occurrence, not a human accidentally
+filing the same report twice. Flagging that as a "duplicate" would
+silently drop real trigger events from the threat analysis exactly
+backwards from what this module is for.
+
+A human can always tick/untick the "Dublett" checkbox in the review UI
+(see webapp/routes.py's event_detail) -- once saved, `is_duplicate_reviewed`
+is set on that event, and this module then treats it as final in either
+direction, the same way triviality.py's `is_trivial_reviewed` already
+works: it never re-flags an event a human explicitly cleared, and it
+never un-flags one a human explicitly confirmed.
 """
 
 from __future__ import annotations
@@ -66,13 +81,24 @@ def classify_duplicate_events(conn: sqlite3.Connection, events: list[sqlite3.Row
     stale, pre-classification snapshot for anything just marked in this
     same call (row objects don't reflect writes made after they were
     fetched; see triviality.classify_trivial_events for the same
-    reasoning)."""
+    reasoning).
+
+    Events with `is_duplicate_reviewed` set are never re-flagged here --
+    a human already made the call via the review UI's "Dublett"
+    checkbox. One a human cleared back to "not a duplicate" is still
+    eligible to be matched against as a canonical original for later
+    events, exactly like any other non-duplicate."""
     duplicate_ids: set[int] = set()
     canonical: list[sqlite3.Row] = []
 
     for event in sorted(events, key=_event_datetime):
+        if event["is_sensor"]:
+            continue
         if event["is_duplicate"]:
             duplicate_ids.add(event["id"])
+            continue
+        if event["is_duplicate_reviewed"]:
+            canonical.append(event)
             continue
         match = next((c for c in canonical if is_same_incident(c, event)), None)
         if match is not None:

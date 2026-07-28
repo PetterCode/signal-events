@@ -1,0 +1,30 @@
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 060247
+Stund: 060247
+Ställe: Trådlarm vid Västra infarten
+Styrka: -
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway
+
+---
+
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 061139
+Stund: 061139
+Ställe: Rörelsedetektor vid Bortre parkeringen
+Styrka: -
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway
+
+---
+
+Till: Stabsassistent
+Från: Sensorgateway
+TNR: 061958
+Stund: 061958
+Ställe: Kamera vid Östra grinden
+Styrka: 1
+Sysselsättning: Sensor aktiverad
+Sagesman: Sensorgateway

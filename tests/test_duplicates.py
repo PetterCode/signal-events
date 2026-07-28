@@ -140,6 +140,33 @@ def test_classify_duplicate_events_is_idempotent_across_repeated_calls():
         assert db.get_event(conn, first_id)["is_duplicate"] == 0
 
 
+def test_classify_duplicate_events_never_flags_sensor_events():
+    """Two sensor-trigger events (is_sensor=True) at the same place with
+    identical templated wording, logged close together -- exactly what
+    demo/generate_training_days.py's sensor scenario produces across
+    different in-story days when a trainee imports them back-to-back in
+    real wall-clock time. Without the is_sensor exemption these would
+    look identical enough to get wrongly flagged as duplicate data entry,
+    when each is actually a genuine, separate sensor trigger."""
+    with db.get_connection() as conn:
+        first_id = _make_event(
+            conn, signal_timestamp=1, place="Trådlarm vid Östra grinden", object=None,
+            activity="Sensor aktiverad", reported_by="Sensorgateway", is_sensor=True,
+        )
+        second_id = _make_event(
+            conn, signal_timestamp=2, place="Trådlarm vid Östra grinden", object=None,
+            activity="Sensor aktiverad", reported_by="Sensorgateway", is_sensor=True,
+        )
+        _set_created_at(conn, first_id, "2026-01-01T10:00:00+00:00")
+        _set_created_at(conn, second_id, "2026-01-01T10:05:00+00:00")
+
+        duplicate_ids = duplicates.classify_duplicate_events(conn, db.list_events(conn))
+
+        assert duplicate_ids == set()
+        assert db.get_event(conn, first_id)["is_duplicate"] == 0
+        assert db.get_event(conn, second_id)["is_duplicate"] == 0
+
+
 def test_classify_duplicate_events_leaves_distinct_incidents_untouched():
     with db.get_connection() as conn:
         vehicle_id = _make_event(

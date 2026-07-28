@@ -14,6 +14,20 @@
       person) märks av, till RÖD när en allvarlig indikation (beväpnad
       person, sabotageförsök) upprepas.
     </p>
+    <form method="post" action="{{ url_for('events.demo_sensor_toggle') }}" style="margin-bottom:1rem">
+      <label style="display:flex;align-items:center;gap:0.4rem;font-weight:400;margin-top:0">
+        <input type="checkbox" name="include_sensors" value="1" style="width:auto" {% if include_sensors %}checked{% endif %}>
+        Inkludera sensorhändelser vid import
+      </label>
+      <p style="font-size:0.8rem;color:#666;margin:0.3rem 0 0.6rem">
+        Varje dag har, utöver de mänskliga rapporterna, tre automatiska
+        sensorhändelser (trådlarm, rörelsedetektor, kamera) -- statiska
+        rapporter från en sensorgateway snarare än en vakt. Kryssrutan
+        styr om de tas med nästa gång du trycker på en Dag-knapp.
+      </p>
+      <button type="submit" class="btn-secondary">Spara</button>
+    </form>
+
     <div class="training-day-buttons">
       {% for entry in training_days %}
         <form method="post" action="{{ url_for('events.import_training_day', day=entry.day) }}" style="display:inline-block">
@@ -22,7 +36,9 @@
             Dag {{ entry.day }}
           </button>
           {% if entry.imported_count %}
-            <span style="font-size:0.75rem;color:#666">({{ entry.imported_count }} importerade)</span>
+            <span style="font-size:0.75rem;color:#666">
+              ({{ entry.imported_count }} importerade{% if entry.sensor_imported_count %}, varav {{ entry.sensor_imported_count }} sensorhändelser{% endif %})
+            </span>
           {% endif %}
         </form>
       {% endfor %}

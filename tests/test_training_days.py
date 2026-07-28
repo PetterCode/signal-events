@@ -147,6 +147,62 @@ def test_import_training_day_inserts_both_adjacent_reports():
         assert "RÖD" in by_unit["2.Kompani"]
 
 
+def test_all_ten_sensor_files_exist_with_three_static_reports():
+    """Sensor events (tripwire/motion detector/camera) are a separate,
+    optional file per day -- see generate_training_days.py -- so the
+    "Inkludera sensorhändelser" toggle can bring them in independently of
+    the human-report story. Deliberately bare-bones: Slag/Symbol/Sedan
+    are all left blank and Sysselsättning is always the same generic
+    "Sensor aktiverad" line -- place is what identifies the sensor type
+    (its text literally says "Trådlarm"/"Rörelsedetektor"/"Kamera")."""
+    with db.get_connection() as conn:
+        for day in range(1, 11):
+            path = TRAINING_DAYS_DIR / f"dag_{day:02d}_sensor.txt"
+            assert path.exists(), f"missing {path}"
+            text = path.read_text(encoding="utf-8")
+            blocks = importer.split_report_blocks(text)
+            assert len(blocks) == 3, f"dag_{day:02d}_sensor.txt has {len(blocks)} blocks, expected 3"
+
+            ids = importer.import_text(conn, text, filename=f"dag_{day:02d}_sensor.txt")
+            assert len(ids) == 3
+            places = []
+            for event_id in ids:
+                event = db.get_event(conn, event_id)
+                assert event["reported_by"] == "Sensorgateway"
+                assert event["place"]
+                assert event["object"] is None
+                assert event["activity"] == "Sensor aktiverad"
+                assert event["marks"] is None
+                assert event["next_steps"] is None
+                places.append(event["place"])
+            assert any("Trådlarm" in p for p in places)
+            assert any("Rörelsedetektor" in p for p in places)
+            assert any("Kamera" in p for p in places)
+
+
+def test_sensor_tnrs_never_collide_with_that_day_own_human_report_tnrs():
+    """TNR is a display label, not a primary key (see naming.py), so a
+    collision wouldn't corrupt anything -- but the sensor times are fully
+    static/deterministic (no RNG), so there's no reason not to keep them
+    distinct from whatever the human-report generator happened to draw
+    for that day, and this pins that down as a regression guard."""
+    tnr_re = re.compile(r"TNR: (\d{6})")
+    for day in range(1, 11):
+        human_tnrs = set(tnr_re.findall((TRAINING_DAYS_DIR / f"dag_{day:02d}.txt").read_text(encoding="utf-8")))
+        sensor_tnrs = set(tnr_re.findall((TRAINING_DAYS_DIR / f"dag_{day:02d}_sensor.txt").read_text(encoding="utf-8")))
+        assert not (human_tnrs & sensor_tnrs), f"day {day}: TNR collision {human_tnrs & sensor_tnrs}"
+
+
+def test_event_images_json_includes_a_camera_capture_image_for_every_day():
+    images_path = TRAINING_DAYS_DIR / "event_images.json"
+    data = json.loads(images_path.read_text(encoding="utf-8"))
+    camera_images = {"camera_car.png", "camera_person.png", "camera_deer.png"}
+    for day in range(1, 11):
+        entries = data[str(day)]
+        camera_entries = [e for e in entries if e["image"] in camera_images]
+        assert len(camera_entries) == 1, f"day {day}: expected exactly one camera image entry"
+
+
 def test_count_messages_by_import_filename_tracks_repeated_imports():
     with db.get_connection() as conn:
         assert db.count_messages_by_import_filename(conn, "dag_01.txt") == 0

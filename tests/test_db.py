@@ -122,6 +122,32 @@ def test_clearing_a_group_name_reverts_to_the_config_default():
         assert db.get_watch_group_name(conn) == config.WATCH_GROUP_NAME
 
 
+def _expected_default_ollama_port() -> str:
+    import urllib.parse
+
+    from signal_events import config
+
+    return str(urllib.parse.urlsplit(config.OLLAMA_URL).port or 11434)
+
+
+def test_ollama_port_defaults_to_the_port_in_config_ollama_url():
+    with db.get_connection() as conn:
+        assert db.get_ollama_port(conn) == _expected_default_ollama_port()
+
+
+def test_set_and_get_ollama_port_overrides_the_default():
+    with db.get_connection() as conn:
+        db.set_ollama_port(conn, "  11500  ")
+        assert db.get_ollama_port(conn) == "11500"
+
+
+def test_clearing_the_ollama_port_reverts_to_the_config_default():
+    with db.get_connection() as conn:
+        db.set_ollama_port(conn, "11500")
+        db.set_ollama_port(conn, "")
+        assert db.get_ollama_port(conn) == _expected_default_ollama_port()
+
+
 def test_create_and_verify_user():
     with db.get_connection() as conn:
         db.create_user(conn, "Vakt Andersson", "hemligt123")
@@ -359,6 +385,42 @@ def test_list_latest_adjacent_reports_per_unit_keeps_only_newest_per_unit():
 
     by_unit = {row["unit_name"]: row["body"] for row in latest}
     assert by_unit == {"Kompani 2": "Ny rapport", "Kompani 3": "Annan enhet"}
+
+
+def test_list_adjacent_reports_returns_full_history_newest_first():
+    """Unlike list_latest_adjacent_reports_per_unit this keeps every row,
+    including the older ones for the same unit -- used by the AI-analys
+    chat's context builder to show adjacent units' history, not just
+    their current status."""
+    with db.get_connection() as conn:
+        db.insert_adjacent_report(
+            conn, signal_timestamp=1, sender_number="+1", sender_name=None,
+            unit_name="Kompani 2", body="Gammal rapport",
+        )
+        db.insert_adjacent_report(
+            conn, signal_timestamp=2, sender_number="+1", sender_name=None,
+            unit_name="Kompani 2", body="Ny rapport",
+        )
+
+    with db.get_connection() as conn:
+        reports = db.list_adjacent_reports(conn)
+
+    assert [r["body"] for r in reports] == ["Ny rapport", "Gammal rapport"]
+
+
+def test_list_adjacent_reports_respects_limit():
+    with db.get_connection() as conn:
+        for i in range(3):
+            db.insert_adjacent_report(
+                conn, signal_timestamp=i, sender_number="+1", sender_name=None,
+                unit_name="Kompani 2", body=f"Rapport {i}",
+            )
+
+    with db.get_connection() as conn:
+        reports = db.list_adjacent_reports(conn, limit=1)
+
+    assert len(reports) == 1
+    assert reports[0]["body"] == "Rapport 2"
 
 
 def test_adjacent_report_attachments_round_trip():

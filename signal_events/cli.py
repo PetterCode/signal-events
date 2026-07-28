@@ -265,9 +265,11 @@ def cmd_summary(args: argparse.Namespace) -> None:
     if args.llm:
         from . import llm  # imported lazily: needs a local Ollama server only here
 
-        print(f"Genererar AI-sammanfattning via Ollama ({config.OLLAMA_MODEL})...")
+        with db.get_connection() as conn:
+            base_url = llm.resolve_ollama_url(db.get_ollama_port(conn))
+        print(f"Genererar AI-sammanfattning via Ollama ({config.OLLAMA_MODEL} på {base_url})...")
         try:
-            narrative = llm.generate_narrative(summary_data, site_name=config.SITE_NAME)
+            narrative = llm.generate_narrative(summary_data, site_name=config.SITE_NAME, base_url=base_url)
         except llm.LLMError as exc:
             print(f"AI-sammanfattning misslyckades: {exc}", file=sys.stderr)
             print("Fortsätter utan AI-sammanfattning.", file=sys.stderr)

@@ -113,14 +113,28 @@ double-click.
 under "Signalhändelser" with, at a glance: the configured unit name, the
 current date/time (a plain client-side clock, ticking in the browser's
 own local time — nothing server-rendered or stale), a quick threat-level
-badge (GRÖN/GUL/RÖD, always computed over a fixed 7-day window regardless
-of whatever period the Sammanställd hotbedömning page itself is showing),
-and when a report — incident report or threat-level summary — was last
-successfully sent via Signal to the report group that adjacent units'
-own status updates also arrive on ("Aldrig" if never). This is a
-quick-glance indicator only; the authoritative assessment is always the
-dedicated Sammanställd hotbedömning page, computed over whichever period
-you actually select there.
+badge (GRÖN/GUL/RÖD, always agreeing with whatever period the
+Sammanställd hotbedömning page itself is currently showing — it reuses
+that page's own computation rather than a separately fixed window that
+could silently disagree with it), and when a report — incident report or
+threat-level summary — was last successfully sent via Signal to the
+report group that adjacent units' own status updates also arrive on
+("Aldrig" if never). This is a quick-glance indicator only; the
+authoritative assessment is always the dedicated Sammanställd
+hotbedömning page, computed over whichever period you actually select
+there.
+
+If any adjacent units have sent a status report, a third row lists each
+one's own latest reported threat level (GRÖN/GUL/RÖD/okänd) and when that
+report was received, as a small badge, e.g. "2.Kompani: GUL · mottagen
+2026-07-28 18:44". Adjacent-unit reports are free text, not a
+structured field, so the level is extracted heuristically
+(`analysis.parse_adjacent_level`): a line that actually starts with
+"Bedömning" wins if there is one, otherwise the most severe level keyword
+mentioned anywhere in the body wins (never the benefit of the doubt) —
+and if nothing matches at all, the badge reads "okänd" rather than
+guessing. The row itself is hidden entirely until at least one adjacent
+unit has actually reported.
 
 **Fetch new messages once** (needs network; run whenever you have
 connectivity — at home, on wifi, etc.):
@@ -301,10 +315,16 @@ Two other ways to get events in besides Signal sync, both in the web UI:
   a 10-day training scenario bundled with the app: buttons "Dag 1" through
   "Dag 10" each import that day's ~30 pre-written reports (mostly routine
   noise, with a recurring vehicle/person and an escalating armed/sabotage
-  pattern woven in) with one click, no file needed. Click through the days
-  in order and watch **Sammanställd hotbedömning** build from GRÖN to GUL
-  to RÖD as the pattern recurs. Each day also delivers a status report
-  from two adjacent units ("2.Kompani", "3.Kompani") that escalate on the
+  pattern woven in) with one click, no file needed. A handful of the
+  notable events (the recurring van, the person in dark clothing, the two
+  sabotage signs, the two armed sightings) come with a cartoon-style
+  illustration attached, visible on that event's own page — a stand-in
+  for a phone photo a guard might take, generated locally with Pillow (no
+  external images/network) via `demo/generate_training_images.py`. Click
+  through the days in order and watch **Sammanställd hotbedömning** build
+  from GRÖN to GUL to RÖD as the pattern recurs. Each day also delivers a
+  status report from two adjacent units ("2.Kompani", "3.Kompani") that
+  escalate on the
   same rhythm shifted a day earlier/later, shown under "Status från
   angränsande enheter" — see `demo/README.md` for the full story and
   `demo/generate_training_days.py` to regenerate the files. While any
@@ -317,6 +337,25 @@ Two other ways to get events in besides Signal sync, both in the web UI:
   scenario — every other stored report, the unit name, and the
   adjacent-unit roster/status reports are left alone, unlike the blunter
   "Rensa händelselogg"/"Rensa allt" resets on Inställningar.
+
+  An "Inkludera sensorhändelser" checkbox on the same tab controls
+  whether each day's import also brings in that day's three automated
+  sensor-trigger reports — one tripwire, one motion detector, one
+  camera — reported by a "Sensorgateway" account rather than a guard, in
+  the same 7S format as everything else but deliberately bare-bones:
+  Slag/Symbol/Sedan are all left blank and Sysselsättning is always the
+  same generic "Sensor aktiverad" line (an automated gateway integration
+  just says "something happened at place X," not prose about what/why)
+  — the place name itself says which sensor type triggered ("Trådlarm
+  vid...", "Rörelsedetektor vid...", "Kamera vid..."). The one exception
+  is the camera: its capture cycles through
+  car/person/deer and comes with a matching cartoon-style photo attached
+  instead, same mechanism as the human-reported signal events above, so
+  what it saw only ever shows up as the picture, never as text. This is
+  a UI-only toggle (session-remembered, not a file), independent of the
+  human-report story, which is identical either way — see
+  `demo/generate_training_days.py`'s `generate_sensor_day` and
+  `dag_NN_sensor.txt` for the generated files.
 
 **Set the unit name** (web UI, "Inställningar" page) — used together with a
 freshly generated TNR (a Day-Hour-Minute date-time-group, e.g. `301842`)
@@ -407,7 +446,18 @@ pattern-matching above is for. Anything recognized this way is marked
 `is_duplicate` in the database (shown as a "dublett" badge on the events
 list and the event page) and left out of the summary's event count and
 groups; it isn't removed, so it still shows up in the events list and can
-be deleted by hand if it's genuinely redundant.
+be deleted by hand if it's genuinely redundant. Automated sensor-trigger
+events (`SIGNAL_EVENTS_SENSOR_GROUP`, described above) are never
+evaluated for this at all — a sensor is *expected* to fire the same
+templated message at the same place repeatedly, and each trigger is a
+genuine, separate occurrence, not a person accidentally filing the same
+report twice.
+
+A false positive can always be corrected by hand: the event's own page
+has a **"Dublett"** checkbox, the same "Trivial" checkbox's pattern —
+tick or untick it and save, and `is_duplicate_reviewed` locks that
+judgment in permanently, in whichever direction, so the automatic
+classifier never overrides it on a later report generation.
 
 **Manuell justering av hotnivå** — the "Sammanställd hotbedömning" page
 has a "Manuell justering av hotnivå" card to correct or override the
@@ -460,17 +510,88 @@ ollama pull llama3.1               # one-time download, tags as llama3.1:latest
 python -m signal_events summary --since 7d --llm --format pdf --output summary.pdf
 ```
 
-Or use the "AI-sammanfattning" tab in the web UI (its own nav item,
-separate from "Sammanställd hotbedömning") — it always summarizes
-whatever period/filter the summary page itself is currently showing, so
-there's one underlying "underlag" for both rather than two independently
-selected ones. If Ollama isn't running or the model tag isn't pulled, this fails
-gracefully with a clear message (run `ollama list` to see what you have)
-and the rest of the report still generates normally. Config (env vars):
-`SIGNAL_EVENTS_OLLAMA_URL` (default `http://localhost:11434`),
-`SIGNAL_EVENTS_OLLAMA_MODEL` (default `llama3.1:latest` — must match the
-exact tag from `ollama list`, e.g. `llama3.1:8b` if you pulled that tag
-specifically), `SIGNAL_EVENTS_OLLAMA_TIMEOUT` (seconds, default 120).
+**AI-analys tab: chat with your own data.** Separate from the CLI's
+one-shot `--narrative` above, the web UI's "AI-analys" tab (its own nav
+item) is a chat-bot backed by the same local Ollama model. Ask it things
+like "har vi sett den här bilen förut?" or "hur har hotnivån utvecklats
+den senaste månaden?" and it answers grounded in three kinds of stored
+data, rebuilt fresh from the database on every turn so it's never stale:
+
+- this unit's own saved event reports,
+- this unit's own threat-level assessment history (both the current one
+  and everything logged before it — see "Logg" on the summary page),
+- reports received from adjacent units, current and older (not just each
+  unit's latest status).
+
+Like the narrative feature, the model never decides or overrides the
+threat level — the system prompt explicitly limits it to reasoning about
+data it's been given and forbids inventing facts. Conversation history is
+kept in your browser session (a "Rensa konversation" button resets it).
+Same config env vars as above: `SIGNAL_EVENTS_OLLAMA_URL`,
+`SIGNAL_EVENTS_OLLAMA_MODEL`.
+
+Asking a question is two requests, not one: the question is saved to
+the session immediately, and a separate request (auto-submitted by the
+page) actually calls the model, which — being a local 8B model with a
+sizeable underlag — can take anywhere from a few seconds to a couple of
+minutes. This split exists specifically so navigating to another tab
+mid-answer can never lose the question itself: only the reply might
+still be pending, and coming back to AI-analys resumes waiting for it
+automatically. If Ollama isn't running or the model tag isn't pulled,
+the question stays visible with a "Försök igen" (retry) button rather
+than auto-retrying against a server that isn't there.
+
+Every Ollama call explicitly sets `num_ctx` (`SIGNAL_EVENTS_OLLAMA_NUM_CTX`,
+default 24576) — without this, Ollama silently falls back to its own much
+smaller default context window and truncates the underlag before the model
+ever sees it, which looks exactly like "the AI can't read all the events"
+even though the data is really there. 24576 was verified against a real
+~300-event/~80-adjacent-report log; if your own log grows well past that,
+raise it further (each older event pushed out of the cap is still disclosed
+via a "N av totalt M" note in what's sent to the model, so it's a visible
+cutoff, not a silent one). A bigger context window costs real processing
+time on CPU-only/modest hardware, which is also why
+`SIGNAL_EVENTS_OLLAMA_TIMEOUT` (`OLLAMA_TIMEOUT_SECONDS`) defaults to 300
+seconds rather than a shorter value — lower it if your hardware is fast
+enough that you'd rather fail fast than wait.
+
+Two other things fed into the chat looking like it "can't find" events,
+neither of which was actually a context-window problem: the per-event
+underlag was missing `reported_by`/`next_steps` entirely, so a question
+like "what has Vakt Berg reported" was unanswerable no matter how much
+context the model got — that's fixed, both fields are now in every event
+line. And the threat-assessment log's "how many events this past summary
+covered" was worded ambiguously enough to get read as the *total* event
+count, producing confidently wrong made-up totals — the underlag now
+states the real totals explicitly, once, up front, so the model reads a
+number instead of trying to count or guess. Whether an event has a photo
+attached is also stated explicitly per event and as an overall total
+(`bifogat foto=ja/nej`, plus a "totalt antal ... med bifogat foto" line),
+for the same reason a plain "reported_by"-shaped gap once made "what has
+Vakt Berg reported" unanswerable.
+
+That top-of-context total still wasn't enough on its own once the
+underlag reached this unit's real size (~300 events): a stated fact near
+the top got answered as "none" purely because it was too far from the
+question by the time the model got there, even though a handful-of-events
+version of the exact same context answered correctly every time. Local
+models attend far more reliably to the end of a long prompt than to
+something stated once, however clearly, hundreds of lines back — so the
+same core totals are now also repeated verbatim in a short "Sammanfattning"
+section at the very end of the underlag, right before the question. This
+fixed the wrong-count failure in practice, though which *section* a fact
+came from can still get mislabeled occasionally. Small local models also
+still transpose the odd TNR digit or mix up two very similar routine
+reports when the log is highly repetitive — that residual imprecision is
+why the "kontrollera alltid mot originalhändelserna" disclaimer on the tab
+isn't just boilerplate.
+
+**Changing the Ollama port.** If `ollama serve` runs on a non-default
+port, set it once on Inställningar under "Ollama-port" instead of an env
+var — it takes priority over whatever port is in `SIGNAL_EVENTS_OLLAMA_URL`
+(only the port is overridden; the scheme/host still come from that env
+var) and applies immediately to both the AI-analys chat and the CLI's
+`--llm` flag, no restart needed.
 
 **Send a report or summary to Signal.** Both the report page and the
 summary page have a "Skicka till Signal" button (needs network + a linked

@@ -5,6 +5,7 @@ import ipaddress
 import json
 import shutil
 import socket
+import sqlite3
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -37,6 +38,7 @@ bp = Blueprint("events", __name__)
 _ADMIN_ONLY_ENDPOINTS = {
     "events.settings",
     "events.save_groups",
+    "events.save_ollama_port",
     "events.add_adjacent_unit",
     "events.delete_adjacent_unit",
     "events.reset_event_log",
@@ -46,6 +48,7 @@ _ADMIN_ONLY_ENDPOINTS = {
     "events.lan_qrcode",
     "events.demo_import",
     "events.demo_clear",
+    "events.demo_sensor_toggle",
     "events.import_training_day",
     "events.system_log",
 }
@@ -105,6 +108,16 @@ def _enforce_access_control():
 TRAINING_DAYS_DIR = config.PROJECT_ROOT / "demo" / "training_days"
 TRAINING_DAYS_COUNT = 10
 ADJACENT_STATUS_PATH = TRAINING_DAYS_DIR / "adjacent_status.json"
+
+# Cartoon-style stand-ins for a phone photo, one per notable "signal"
+# event type (the recurring van, the person in dark clothing, the two
+# sabotage signs, the two armed sightings) -- see
+# demo/generate_training_images.py. event_images.json maps each day to
+# the TNRs of that day's events that should get one, generated alongside
+# the day's own report text (demo/generate_training_days.py) so the two
+# files can never drift out of sync with each other.
+TRAINING_IMAGES_DIR = TRAINING_DAYS_DIR / "images"
+EVENT_IMAGES_PATH = TRAINING_DAYS_DIR / "event_images.json"
 
 # Offset for synthetic (non-Signal) timestamps: large enough that
 # `time.time_ns() - _SYNTHETIC_TIMESTAMP_OFFSET` stays negative (so it's
@@ -210,12 +223,22 @@ def inject_header_status() -> dict:
         unit_name = db.get_unit_name(conn)
         last_adjacent_send_at = db.get_last_adjacent_send(conn)
         demo_mode = db.has_demo_events(conn)
+        adjacent_reports = db.list_latest_adjacent_reports_per_unit(conn)
     threat = _compute_summary(preset, include_unreviewed).threat
+    adjacent_statuses = [
+        {
+            "unit_name": report["unit_name"],
+            "level": analysis.parse_adjacent_level(report["body"]),
+            "received_at": _format_dt(report["received_at"]),
+        }
+        for report in adjacent_reports
+    ]
     return {
         "header_unit_name": unit_name,
         "header_threat": threat,
         "header_threat_period_label": _SINCE_LABELS.get(preset, preset),
         "header_last_adjacent_send": _format_dt(last_adjacent_send_at),
+        "header_adjacent_statuses": adjacent_statuses,
         "header_demo_mode": demo_mode,
         "header_is_admin": _access_tier() == "admin",
         "header_guest_name": session.get("guest_user_name"),
@@ -305,6 +328,7 @@ def settings():
         report_group = db.get_report_group_name(conn)
         recurring_group = db.get_recurring_group_name(conn)
         sensor_group = db.get_sensor_group_name(conn)
+        ollama_port = db.get_ollama_port(conn)
         users = db.list_users(conn)
 
     example_filename = naming.build_report_filename(unit_name, "hotbedomning", "pdf")
@@ -312,7 +336,7 @@ def settings():
         "settings.html", unit_name=unit_name, example_filename=example_filename,
         adjacent_units=adjacent_units, watch_group=watch_group,
         report_group=report_group, recurring_group=recurring_group,
-        sensor_group=sensor_group, users=users,
+        sensor_group=sensor_group, ollama_port=ollama_port, users=users,
         lan_url=_lan_url(),
     )
 
@@ -350,6 +374,18 @@ def save_groups():
         db.set_recurring_group_name(conn, request.form.get("recurring_group", ""))
         db.set_sensor_group_name(conn, request.form.get("sensor_group", ""))
     flash("Signal-grupper sparade.")
+    return redirect(url_for("events.settings"))
+
+
+@bp.route("/settings/ollama", methods=["POST"])
+def save_ollama_port():
+    port = request.form.get("ollama_port", "").strip()
+    if not port.isdigit() or not (1 <= int(port) <= 65535):
+        flash("Ogiltig port -- ange ett portnummer mellan 1 och 65535.", "error")
+    else:
+        with db.get_connection() as conn:
+            db.set_ollama_port(conn, port)
+        flash(f"Ollama-port sparad ({port}). Gäller direkt för AI-analys.")
     return redirect(url_for("events.settings"))
 
 
@@ -506,10 +542,28 @@ def demo_import():
                 "imported_count": db.count_messages_by_import_filename(
                     conn, f"dag_{day:02d}.txt"
                 ),
+                "sensor_available": (TRAINING_DAYS_DIR / f"dag_{day:02d}_sensor.txt").exists(),
+                "sensor_imported_count": db.count_messages_by_import_filename(
+                    conn, f"dag_{day:02d}_sensor.txt"
+                ),
             }
             for day in range(1, TRAINING_DAYS_COUNT + 1)
         ]
-    return render_template("demo_import.html", training_days=training_days)
+    return render_template(
+        "demo_import.html", training_days=training_days,
+        include_sensors=session.get("demo_include_sensors", False),
+    )
+
+
+@bp.route("/events/import/demo/sensor-toggle", methods=["POST"])
+def demo_sensor_toggle():
+    session["demo_include_sensors"] = bool(request.form.get("include_sensors"))
+    flash(
+        "Sensorhändelser kommer nu tas med vid import av kommande dagar."
+        if session["demo_include_sensors"] else
+        "Sensorhändelser tas inte längre med vid import av kommande dagar."
+    )
+    return redirect(url_for("events.demo_import"))
 
 
 @bp.route("/events/import/demo/clear", methods=["POST"])
@@ -566,6 +620,39 @@ def reset_database():
     return redirect(url_for("events.settings"))
 
 
+def _attach_training_images(conn: sqlite3.Connection, event_ids: list[int], day: int) -> int:
+    """Copies the cartoon stand-in photo (see TRAINING_IMAGES_DIR) onto
+    whichever of this day's just-imported events are listed in
+    event_images.json, matched by TNR -- the same file-under-
+    ATTACHMENTS_DIR/<message_id>/ convention real Signal attachments use
+    (see signal_client._copy_attachment), so they display and get
+    cleaned up (demo_clear) exactly like any other attachment. Returns
+    how many were attached, for the caller's flash message."""
+    if not EVENT_IMAGES_PATH.exists():
+        return 0
+    manifest = json.loads(EVENT_IMAGES_PATH.read_text(encoding="utf-8"))
+    by_tnr = {entry["tnr"]: entry["image"] for entry in manifest.get(str(day), [])}
+    if not by_tnr:
+        return 0
+
+    attached = 0
+    for event_id in event_ids:
+        event = db.get_event(conn, event_id)
+        image_name = by_tnr.get(event["event_time"]) if event else None
+        if not image_name:
+            continue
+        src = TRAINING_IMAGES_DIR / image_name
+        if not src.exists():
+            continue
+        dest_dir = config.ATTACHMENTS_DIR / str(event["message_id"])
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / image_name
+        shutil.copyfile(src, dest)
+        db.insert_attachment(conn, message_id=event["message_id"], file_path=str(dest), content_type="image/png")
+        attached += 1
+    return attached
+
+
 @bp.route("/events/import/training/<int:day>", methods=["POST"])
 def import_training_day(day: int):
     if not 1 <= day <= TRAINING_DAYS_COUNT:
@@ -580,6 +667,20 @@ def import_training_day(day: int):
     text = path.read_text(encoding="utf-8")
     with db.get_connection() as conn:
         event_ids = importer.import_text(conn, text, filename=filename)
+
+        sensor_count = 0
+        if session.get("demo_include_sensors", False):
+            sensor_filename = f"dag_{day:02d}_sensor.txt"
+            sensor_path = TRAINING_DAYS_DIR / sensor_filename
+            if sensor_path.exists():
+                sensor_ids = importer.import_text(
+                    conn, sensor_path.read_text(encoding="utf-8"), filename=sensor_filename,
+                    is_sensor=True,
+                )
+                event_ids += sensor_ids
+                sensor_count = len(sensor_ids)
+
+        image_count = _attach_training_images(conn, event_ids, day)
 
         adjacent_count = 0
         if ADJACENT_STATUS_PATH.exists():
@@ -603,11 +704,15 @@ def import_training_day(day: int):
         f"Importerade {len(event_ids)} rapport(er) från Dag {day} – "
         "granska dem innan de tas med i en rapport."
     )
+    if sensor_count:
+        message += f" Av dessa är {sensor_count} automatiska sensorhändelser."
     if adjacent_count:
         message += (
             f" Även {adjacent_count} statusrapport(er) från angränsande "
             "enheter mottagna."
         )
+    if image_count:
+        message += f" {image_count} rapport(er) har en bifogad bild."
     flash(message)
     return redirect(url_for("events.list_events", since="all", needs_review="1"))
 
@@ -628,6 +733,11 @@ def event_detail(event_id: int):
             # it so the auto-classifier in triviality.py never overrides
             # that judgment on a later report generation.
             fields["is_trivial_reviewed"] = 1
+            fields["is_duplicate"] = 1 if request.form.get("mark_duplicate") else 0
+            # Same lock, same reasoning, for duplicates.py's classifier --
+            # this is the only way to clear a false-positive duplicate
+            # flag (or confirm one the heuristic missed) and have it stick.
+            fields["is_duplicate_reviewed"] = 1
             db.update_event(conn, event_id, fields)
             _save_uploaded_photos(conn, event["message_id"])
             return redirect(url_for("events.event_detail", event_id=event_id))
@@ -794,6 +904,140 @@ def _adjacent_status_rows(preset: str) -> list[dict]:
             }
             for report in reports
         ]
+
+
+def _truncate(text: str | None, limit: int) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + " […]"
+
+
+# Row caps for _build_ai_context -- keep the prompt sent to the local LLM
+# within a sane size (this is an 8B model with a limited context window,
+# not a hosted frontier model) while still covering "current and older"
+# data as asked for, newest first so the most relevant material survives
+# the cap. Sized with headroom above config.OLLAMA_NUM_CTX's verified
+# real-world usage (a full ~300-event/~80-adjacent-report log fit
+# comfortably) -- if a deployment's own log grows past these, the
+# "N av totalt M" note in the context text still discloses the cut
+# rather than silently answering from a partial picture.
+_AI_CONTEXT_EVENT_LIMIT = 400
+_AI_CONTEXT_SUMMARY_LOG_LIMIT = 75
+_AI_CONTEXT_ADJACENT_REPORT_LIMIT = 150
+
+
+def _build_ai_context() -> str:
+    """Assembles the underlag (source material) handed to the local LLM on
+    every turn of the AI-analys chat -- see llm.generate_chat_reply. Three
+    sections, each covering both current and historical data rather than
+    just "right now": this unit's own saved event reports, this unit's own
+    threat-level assessment history (summary_log), and the reports received
+    from adjacent units (their full history, not just each unit's latest --
+    see db.list_adjacent_reports)."""
+    with db.get_connection() as conn:
+        unit_name = db.get_unit_name(conn)
+        all_events = db.list_events(conn)
+        events = all_events[:_AI_CONTEXT_EVENT_LIMIT]
+        all_summary_log = db.list_summary_log(conn)
+        summary_log = all_summary_log[:_AI_CONTEXT_SUMMARY_LOG_LIMIT]
+        all_adjacent_reports = db.list_adjacent_reports(conn)
+        adjacent_reports = all_adjacent_reports[:_AI_CONTEXT_ADJACENT_REPORT_LIMIT]
+        override = db.get_threat_override(conn)
+        photo_message_ids = db.list_message_ids_with_attachments(conn)
+
+    events_with_photo = sum(1 for e in all_events if e["message_id"] in photo_message_ids)
+
+    # Stated once, explicitly, before any list -- so a plain "how many
+    # events/reports are there" question can be answered by reading a
+    # single stated number instead of the model having to count rows
+    # itself (small local models are unreliable at exactly that, e.g.
+    # answering wildly different made-up totals from one turn to the
+    # next). Labeled distinctly from summary_log's per-entry "byggd på N
+    # rapporter" below, which is a different number (how many events one
+    # specific past assessment covered) that was previously worded
+    # ambiguously enough ("antal händelser=") to get confused for this.
+    lines = [
+        f"Egen enhet: {unit_name or 'ej angivet'}",
+        f"Totalt antal sparade händelser i händelseloggen just nu: {len(all_events)}",
+        f"Totalt antal loggade hotbedömningar (Logg-sidan): {len(all_summary_log)}",
+        f"Totalt antal mottagna rapporter från angränsande enheter: {len(all_adjacent_reports)}",
+        f"Totalt antal av dessa händelser som har ett bifogat foto: {events_with_photo}",
+    ]
+
+    if override:
+        lines.append(
+            f"Manuellt satt hotnivå just nu: {override['level'].upper()} "
+            f"(satt {_format_dt(override['set_at'])}"
+            f"{', anteckning: ' + override['notes'] if override['notes'] else ''})"
+        )
+
+    lines.append(
+        f"\n### Egna sparade händelser ({len(events)} av totalt {len(all_events)} visas, nyast först)"
+    )
+    if not events:
+        lines.append("Inga händelser sparade.")
+    for e in events:
+        tnr = naming.event_tnr(e["event_time"], e["created_at"])
+        flags = []
+        if e["needs_review"]:
+            flags.append("ogranskad")
+        if e["is_trivial"]:
+            flags.append("bedömd trivial")
+        if e["is_duplicate"]:
+            flags.append("duplikat")
+        flag_text = f" [{', '.join(flags)}]" if flags else ""
+        foto = "ja" if e["message_id"] in photo_message_ids else "nej"
+        lines.append(
+            f"- TNR {tnr}{flag_text}: plats={e['place'] or '-'}, antal={e['count'] or '-'}, "
+            f"föremål={e['object'] or '-'}, verksamhet={_truncate(e['activity'], 200)}, "
+            f"kännetecken={_truncate(e['marks'], 200)}, rapporterad av={e['reported_by'] or '-'}, "
+            f"åtgärd/uppföljning={_truncate(e['next_steps'], 150)}, bifogat foto={foto}"
+        )
+
+    lines.append(
+        f"\n### Egen hotbedömningshistorik ({len(summary_log)} av totalt "
+        f"{len(all_summary_log)} visas, nyast först)"
+    )
+    if not summary_log:
+        lines.append("Inga tidigare hotbedömningar loggade.")
+    for entry in summary_log:
+        lines.append(
+            f"- {_format_dt(entry['created_at'])}: period={entry['period_label']}, "
+            f"nivå={entry['level'].upper()}, poäng={entry['score']}, "
+            f"byggd på {entry['total_events']} rapporter, källa={entry['source']}"
+        )
+
+    lines.append(
+        f"\n### Rapporter från angränsande enheter ({len(adjacent_reports)} av totalt "
+        f"{len(all_adjacent_reports)} visas, nyast först)"
+    )
+    if not adjacent_reports:
+        lines.append("Inga rapporter mottagna från angränsande enheter.")
+    for report in adjacent_reports:
+        who = report["unit_name"] or report["sender_name"] or "okänd avsändare"
+        lines.append(
+            f"- {_format_dt(report['received_at'])} ({who}): {_truncate(report['body'], 400)}"
+        )
+
+    # Repeated verbatim at the very end, right before the model reads the
+    # actual question -- local models attend far more reliably to the
+    # start and (especially) the end of a long context than to a fact
+    # buried a few hundred lines back, even when that fact was already
+    # stated up top. Confirmed necessary against this unit's real ~300-
+    # event log: a plain top-of-context total was answered correctly with
+    # a handful of events but got answered as "none" once the underlag
+    # grew to real size, even though the exact same sentence was right
+    # there in the prompt the whole time.
+    lines.append(
+        f"\n### Sammanfattning (samma siffror som högst upp, upprepade här)\n"
+        f"Totalt antal sparade händelser i händelseloggen just nu: {len(all_events)}\n"
+        f"Totalt antal av dessa händelser som har ett bifogat foto: {events_with_photo}\n"
+        f"Totalt antal loggade hotbedömningar (Logg-sidan): {len(all_summary_log)}\n"
+        f"Totalt antal mottagna rapporter från angränsande enheter: {len(all_adjacent_reports)}"
+    )
+
+    return "\n".join(lines)
 
 
 def _log_summary_generation(
@@ -988,68 +1232,90 @@ def summary_send_recurring():
     )
 
 
+# Session key for the AI-analys chat's running conversation, and how many
+# of its most recent messages (user + assistant turns combined) to keep --
+# capped mainly to keep the signed session cookie small, since Flask's
+# default session storage is client-side. The underlag itself (see
+# _build_ai_context) is rebuilt fresh from the database on every turn
+# regardless, so trimming old chat turns never loses access to any event
+# or report -- only to the earlier back-and-forth about them.
+_AI_CHAT_SESSION_KEY = "ai_chat_history"
+_AI_CHAT_MAX_MESSAGES = 12
+
+# Set when the most recent reply attempt failed (see summary_ai_respond),
+# so the page shows a manual retry button instead of auto-submitting
+# straight back into another failing call -- e.g. Ollama simply isn't
+# running. Cleared as soon as a question is asked or answered.
+_AI_CHAT_FAILED_KEY = "ai_chat_failed"
+
+
 @bp.route("/summary/ai")
 def summary_ai():
-    """Landing page for the "AI-sammanfattning" tab -- always reflects
-    whatever period/filter the Sammanställd hotbedömning page itself is
-    currently showing (same session-remembered state as the header
-    status strip), so there's one "current" underlag, not a second
-    independent one to keep in sync by hand."""
-    preset = session.get("summary_since", "7d")
-    include_unreviewed = session.get("summary_include_unreviewed", False)
+    """Landing page for the "AI-analys" tab: a chat-bot (not a one-shot
+    narrative generator) that can be asked about this unit's saved events
+    and both this unit's and adjacent units' threat-level report history
+    -- see _build_ai_context for exactly what it's given on every turn.
+    Conversation state lives in the session, so it's per browser/user.
+
+    Asking a question is split into two requests (see summary_ai_chat and
+    summary_ai_respond) specifically so the question itself is saved to
+    the session immediately, before the slow part (an actual local-LLM
+    call regularly takes 30-190+ seconds -- see llm.OLLAMA_TIMEOUT_SECONDS)
+    even starts. Otherwise, a user who gets impatient and navigates to
+    another tab mid-wait would cancel the browser's wait for that one
+    slow response before its Set-Cookie ever lands, silently losing both
+    their question and the reply -- exactly what "the chat disappears
+    when I switch tabs" reports were. With the question saved first, at
+    worst only the reply is still pending, and this page notices that
+    (`pending` below) and resumes waiting for it automatically."""
+    history = session.get(_AI_CHAT_SESSION_KEY, [])
+    pending = bool(history) and history[-1]["role"] == "user"
     return render_template(
-        "summary_ai.html", since=preset, include_unreviewed=include_unreviewed, narrative=None,
+        "summary_ai.html", chat_history=history, pending=pending,
+        failed=pending and session.get(_AI_CHAT_FAILED_KEY, False),
     )
 
 
-@bp.route("/summary/narrative", methods=["POST"])
-def summary_narrative():
-    preset = request.form.get("since", "7d")
-    include_unreviewed = request.form.get("include_unreviewed") == "1"
-    download = request.form.get("download")
+@bp.route("/summary/ai/chat", methods=["POST"])
+def summary_ai_chat():
+    """Saves the question and redirects immediately -- see summary_ai's
+    docstring for why the actual LLM call happens in a separate request
+    (summary_ai_respond) instead of right here."""
+    message = request.form.get("message", "").strip()
+    if message:
+        history = session.get(_AI_CHAT_SESSION_KEY, [])
+        history.append({"role": "user", "content": message})
+        session[_AI_CHAT_SESSION_KEY] = history[-_AI_CHAT_MAX_MESSAGES:]
+        session[_AI_CHAT_FAILED_KEY] = False
+    return redirect(url_for("events.summary_ai"))
 
-    summary_data = _compute_summary(preset, include_unreviewed)
 
-    try:
-        narrative = llm.generate_narrative(summary_data, site_name=config.SITE_NAME)
-    except llm.LLMError as exc:
-        flash(str(exc), "error")
-        return render_template(
-            "summary_ai.html", since=preset, include_unreviewed=include_unreviewed, narrative=None,
-        )
+@bp.route("/summary/ai/respond", methods=["POST"])
+def summary_ai_respond():
+    """The slow half of asking a question -- see summary_ai's docstring.
+    Triggered by the page itself (auto-submitted, or manually via a retry
+    button after a failure) whenever the session ends on an unanswered
+    user message. Safe to call again if a previous attempt failed or was
+    interrupted: it just regenerates the reply for whatever question is
+    still pending, it never re-appends the question itself."""
+    history = session.get(_AI_CHAT_SESSION_KEY, [])
+    if history and history[-1]["role"] == "user":
+        with db.get_connection() as conn:
+            base_url = llm.resolve_ollama_url(db.get_ollama_port(conn))
+        try:
+            reply = llm.generate_chat_reply(history, _build_ai_context(), base_url=base_url)
+        except llm.LLMError as exc:
+            session[_AI_CHAT_FAILED_KEY] = True
+            flash(str(exc), "error")
+        else:
+            history.append({"role": "assistant", "content": reply})
+            session[_AI_CHAT_SESSION_KEY] = history[-_AI_CHAT_MAX_MESSAGES:]
+            session[_AI_CHAT_FAILED_KEY] = False
+    return redirect(url_for("events.summary_ai"))
 
-    if download in ("markdown", "pdf", "text"):
-        tnr = _log_summary_generation(summary_data, preset, source="download", format=download)
-    else:
-        tnr = None
 
-    if download == "markdown":
-        content = generator.render_summary_markdown(
-            summary_data, site_name=config.SITE_NAME, narrative=narrative
-        )
-        buf = io.BytesIO(content.encode("utf-8"))
-        return send_file(
-            buf, mimetype="text/markdown", as_attachment=True,
-            download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "md", tnr=tnr),
-        )
-    if download == "text":
-        content = generator.render_summary_text(
-            summary_data, site_name=config.SITE_NAME, narrative=narrative
-        )
-        buf = io.BytesIO(content.encode("utf-8"))
-        return send_file(
-            buf, mimetype="text/plain", as_attachment=True,
-            download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "txt", tnr=tnr),
-        )
-    if download == "pdf":
-        buf = generator.render_summary_pdf(
-            summary_data, site_name=config.SITE_NAME, narrative=narrative
-        )
-        return send_file(
-            buf, mimetype="application/pdf", as_attachment=True,
-            download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "pdf", tnr=tnr),
-        )
-
-    return render_template(
-        "summary_ai.html", since=preset, include_unreviewed=include_unreviewed, narrative=narrative,
-    )
+@bp.route("/summary/ai/clear", methods=["POST"])
+def summary_ai_clear():
+    session.pop(_AI_CHAT_SESSION_KEY, None)
+    session.pop(_AI_CHAT_FAILED_KEY, None)
+    return redirect(url_for("events.summary_ai"))

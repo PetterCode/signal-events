@@ -193,6 +193,23 @@ def test_ingest_envelope_filters_by_group_id():
     assert direct_message is False
 
 
+def test_ingest_envelope_tags_events_as_sensor_when_requested():
+    """See duplicates.py: is_sensor exempts the resulting event from
+    duplicate detection, since a real sensor gateway firing the same
+    templated message at the same place repeatedly is expected, not
+    double entry."""
+    from signal_events import db as db_module
+
+    with db_module.get_connection() as conn:
+        signal_client.ingest_envelope(conn, _group_envelope(1, "GROUP_S"), is_sensor=True)
+        signal_client.ingest_envelope(conn, _group_envelope(2, "GROUP_S"), is_sensor=False)
+
+        events = db_module.list_events(conn)
+        sensor_flags = sorted(e["is_sensor"] for e in events)
+
+    assert sensor_flags == [0, 1]
+
+
 def test_list_groups_success_handles_key_variants():
     payload = json.dumps([
         {"id": "GROUP_A", "name": "Stabsassistent test"},
@@ -425,7 +442,13 @@ def test_watch_multi_dispatches_envelopes_to_correct_store():
 
     assert counts == [(1, 1, 1)]
     with db_module.get_connection() as conn:
-        assert len(db_module.list_events(conn)) == 2  # one incident report, one sensor event
+        events = db_module.list_events(conn)
+        assert len(events) == 2  # one incident report, one sensor event
+        # the sensor-group event must be tagged is_sensor (see
+        # duplicates.py, which never evaluates those for duplicate status)
+        by_body = {e["raw_text"]: e["is_sensor"] for e in events}
+        assert by_body["3 lastbilar vid grinden"] == 0
+        assert by_body["Rörelselarm utlöst vid västra stängslet"] == 1
         adjacent = db_module.list_latest_adjacent_reports_per_unit(conn)
         assert len(adjacent) == 1
         assert adjacent[0]["unit_name"] == "Kompani_2"

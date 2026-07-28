@@ -73,3 +73,60 @@ def test_generate_narrative_invalid_json_raises():
     with patch("urllib.request.urlopen", return_value=resp):
         with pytest.raises(llm.LLMError):
             llm.generate_narrative(_fake_summary(), site_name="Kvarn")
+
+
+def test_generate_chat_reply_sends_context_as_system_message_and_returns_content():
+    history = [{"role": "user", "content": "Har vi sett bilen förut?"}]
+    with patch("urllib.request.urlopen", return_value=_mock_response(
+        {"message": {"role": "assistant", "content": "  Ja, en gång tidigare.  "}}
+    )) as mock_urlopen:
+        text = llm.generate_chat_reply(history, context="Egna sparade händelser: inga.")
+
+    assert text == "Ja, en gång tidigare."
+    request = mock_urlopen.call_args[0][0]
+    assert request.full_url.endswith("/api/chat")
+    sent = json.loads(request.data.decode("utf-8"))
+    assert sent["messages"][0]["role"] == "system"
+    assert "Egna sparade händelser: inga." in sent["messages"][0]["content"]
+    assert sent["messages"][1] == history[0]
+
+
+def test_generate_chat_reply_connection_error():
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")):
+        with pytest.raises(llm.LLMError, match="Ollama"):
+            llm.generate_chat_reply([{"role": "user", "content": "Hej"}], context="")
+
+
+def test_generate_chat_reply_empty_response_raises():
+    with patch("urllib.request.urlopen", return_value=_mock_response({"message": {"content": ""}})):
+        with pytest.raises(llm.LLMError):
+            llm.generate_chat_reply([{"role": "user", "content": "Hej"}], context="")
+
+
+def test_resolve_ollama_url_without_a_port_returns_config_default():
+    from signal_events import config
+
+    assert llm.resolve_ollama_url(None) == config.OLLAMA_URL
+    assert llm.resolve_ollama_url("") == config.OLLAMA_URL
+
+
+def test_resolve_ollama_url_splices_in_the_given_port():
+    assert llm.resolve_ollama_url("11500") == "http://localhost:11500"
+
+
+def test_generate_narrative_uses_the_resolved_base_url():
+    with patch("urllib.request.urlopen", return_value=_mock_response({"response": "Text."})) as mock_urlopen:
+        llm.generate_narrative(_fake_summary(), site_name="Kvarn", base_url="http://localhost:11500")
+
+    request = mock_urlopen.call_args[0][0]
+    assert request.full_url == "http://localhost:11500/api/generate"
+
+
+def test_generate_chat_reply_uses_the_resolved_base_url():
+    with patch("urllib.request.urlopen", return_value=_mock_response({"message": {"content": "Text."}})) as mock_urlopen:
+        llm.generate_chat_reply(
+            [{"role": "user", "content": "Hej"}], context="", base_url="http://localhost:11500",
+        )
+
+    request = mock_urlopen.call_args[0][0]
+    assert request.full_url == "http://localhost:11500/api/chat"
