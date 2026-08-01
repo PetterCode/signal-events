@@ -33,7 +33,11 @@ not an LLM) into:
 4. **What object is observed**
 5. **What activities are being made**
 6. **Distinguishing marks**
-7. **Who is sending the report** (taken from the Signal sender, not the text)
+7. **Who is reporting** (a 7S-labeled message's own "Sagesman" — or "Från"
+   if that's all it gives — wins when present, since the report body is
+   the more authoritative source and the two can genuinely differ from
+   whoever's Signal account it was sent from, e.g. a duty officer relaying
+   someone else's account; otherwise falls back to the Signal sender)
 8. **What happens next**
 
 Because free-text extraction is inherently unreliable, every parsed event is
@@ -49,6 +53,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+Optional: if you plan to use Lantmäteriet's free FTP map source (Inställningar
+→ "Kartkälla" → "Lantmäteriets FTP (GDAL)" — see "Kart-vy" under Day-to-day
+usage), also install GDAL as a system package (not in `requirements.txt` —
+this app calls its `gdal_translate` command-line tool, not its Python
+bindings): `brew install gdal` on macOS, or your distro's `gdal-bin`
+package on Linux. Not needed for the default URL-based map providers.
 
 ### 2. Install and link signal-cli (one-time, needs network)
 
@@ -183,6 +194,21 @@ known adjacent unit names on the "Inställningar" page (this list is just
 for your own reference — it doesn't affect how incoming reports are
 matched, since that's read directly from the filename).
 
+**Events received from adjacent units** are a separate thing from the
+status reports above — a specific observation an adjacent unit passed
+along (phone call, radio, in person) that's worth keeping in the same
+structured log. "+ Från angränsande enhet" on Tidslinje opens the same
+8-field manual-entry form as "+ Lägg till händelse", plus a required
+unit-name field (autocompleted from the Inställningar roster above, but
+free text — no need to have pre-added the unit). The saved event is
+tagged with that unit's name (`events.source_unit`) so it's tracked
+separately from this unit's own: shown on Tidslinje with a "från
+`<enhet>`" badge and on Kart-vy as a small blue dot instead of this
+unit's own pin, but always excluded from this unit's own threat
+assessment and every generated report (`db.list_events`'s `own_only`) —
+the same way the adjacent-unit status reports above never get merged
+into this unit's own picture.
+
 This same `watch`/`serve --watch` command also polls a *third* group:
 `SIGNAL_EVENTS_SENSOR_GROUP` (default `"Stabsassistent test-sensorer"`)
 — for automated sensor-trigger events from a sensor gateway. A sensor
@@ -227,6 +253,192 @@ If the poller fails (no network, wrong group name, signal-cli not linked),
 it logs the error to the terminal and stops itself — the web UI keeps
 working normally either way. `--watch-poll-timeout` mirrors `watch`'s
 `--poll-timeout`.
+
+**Kart-vy — position of events on a map.** If a report's "Ställe" field (or
+its body text) contains a coordinate, the position is converted to lat/lon
+automatically and offline (`signal_events/coordinates.py`) — no network
+involved, and it never overrides a position a human has set. MGRS is tried
+first and is the only format the app itself displays a position in
+(Kartcentrum's own "MGRS: ..." line on Inställningar, via the same module's
+reverse conversion), but a report can just as well use decimal degrees
+(`59.3269, 18.0717`), degrees/minutes/seconds (`59°19'37"N 18°04'18"E`), or
+degrees/decimal minutes (`59°19.617'N 18°04.300'E`) — whichever one a
+person actually typed, tried in that order, first match wins. On an
+event's own page, a click-to-place map lets anyone drop or move the pin
+manually regardless of whether a coordinate was found in the text — a
+manual pin always wins over an auto-extracted one, and a "Ta bort
+position" button clears it. This same click-to-place map (and the same
+auto-extraction, tried against the "Plats" and "Anteckningar" fields) is
+also on the "Lägg till händelse manuellt" and "+ Från angränsande enhet"
+forms, so a manually entered report can carry a position too, not just
+Signal-ingested ones.
+The "Kart-vy" nav tab shows every event that has a known position as a
+marker on one map, filtered by the same Tidsperiod selection (24 tim/7
+dagar/30 dagar/Alla) as Sammanställd hotbedömning and Tidslinje — defaults
+to 7 dagar; clicking a marker opens that event. This unit's own events show
+as ordinary pins; events received from adjacent units (see above) show as
+small blue dots instead, and a "Visa/Dölj händelser från angränsande
+enheter" link toggles them on or off (shown by default).
+
+**Kartcentrum** (Inställningar) is the reference point everything else in
+this section revolves around — the area that gets downloaded/cached, and
+the fallback view when no event has a position yet. It defaults to
+`config.DEFAULT_MAP_CENTER` — Stockholm Palace, 59°19'37"N 18°04'17"E —
+until explicitly set. Once set, Inställningar also shows it converted to MGRS
+(`coordinates.to_mgrs`) — handy for cross-referencing against a report
+written in that format.
+
+**Map tiles: online by default, with a local-cache option for offline
+use.** Inställningar → "Kartläge" picks between the two:
+
+- **Online** (the default) — the app fetches each tile live from the
+  configured provider the moment a map needs it, and caches it to disk as
+  a side effect. Maps work immediately with no setup beyond a tile
+  provider, same as any ordinary online map; anything not already cached
+  needs connectivity.
+- **Lokal cache** — tiles are served strictly from whatever's already in
+  the local cache, so viewing either map (an event's own page, or the
+  "Kart-vy" tab) touches the network exactly zero times. An area outside
+  the cached radius, or before any download has run, just renders as
+  empty map rather than failing.
+
+Either mode, the tile provider URL (including any API key) stays on the
+server side — the browser always requests `/tiles/{z}/{x}/{y}.png` from
+this app, never the provider directly, so a guest viewing the map never
+sees the key. Leaflet's own JS/CSS is vendored locally under
+`webapp/static/vendor/leaflet/` regardless of mode, so no CDN is ever
+needed to load the page itself, only the tile images depend on the
+network/cache.
+
+**Downloading a whole area for local/offline use** works the same in
+either mode, and is what "Lokal cache" mode depends on: set a center
+point (latitud/longitud) for the skyddsobjekt's area on Inställningar →
+"Kartcentrum", pick an **area size** — "Litet" (1×1 km), "Mellan" (10×10
+km), or "Stort" (100×100 km, the default, matching this app's original
+fixed 50 km radius before this became configurable) — then click "Ladda
+ner kartor för området" — the one deliberate, bulk network-touching step
+(besides `sync`/`watch`). Smaller sizes mean a quicker, lighter download;
+"Litet" is enough for reviewing a single small compound closely, "Stort"
+covers a wide surrounding area at the cost of a much larger one-time
+fetch (and, if using Lantmäteriet's FTP source, a much longer one — see
+below). It runs in a background thread so the web UI stays responsive;
+Inställningar shows "X av Y kartrutor cachade" so you can check progress
+by refreshing the page, and re-clicking the button later only fetches
+whatever's still missing (e.g. after a run got interrupted, or to fill in
+a changed center point or area size). Pre-filling the cache this way and
+then switching to "Lokal cache" mode is the way to prepare for a
+deployment that's expected to lose connectivity — in "Online" mode, the
+cache still fills in tile-by-tile as maps get viewed, but only for
+whatever's actually been looked at.
+
+**Default provider: Lantmäteriet (Sweden's national land survey).**
+`config.DEFAULT_TILE_URL_TEMPLATE` points at their free, open
+"topowebb-ccby" WMTS layer — despite the "-ccby" in the name (left over
+from a past product rename), it's actually licensed
+[CC0](https://geotorget.lantmateriet.se/dokumentation/GEODOK/72/1.0_utgaende/atkomst-och-leverans/teknisk-beskrivning.html)
+(no attribution required, commercial use and redistribution both fine) —
+a better fit for a Swedish skyddsobjekt than a generic global provider,
+both in map detail and in having terms that actually permit this app's
+kind of caching.
+
+Getting a working API key currently means going through Lantmäteriet's
+Geotorget/NGP flow rather than the old (now-retired) opendata.lantmateriet.se
+self-service signup:
+1. Create a free private-person account at
+   [geotorget.lantmateriet.se](https://geotorget.lantmateriet.se/).
+2. Under "Nationella geodataplattformen" → "Bli konsument", apply and
+   accept the terms.
+3. In the [API-portalen](https://apimanager.lantmateriet.se/store/),
+   generate a key for the **"token in URL"** REST method (not the
+   OAuth2/Bearer-header one — that issues short-lived tokens this app's
+   plain URL-template setting has no way to refresh on its own).
+
+Paste the resulting key into Inställningar → "Kartleverantör"'s URL,
+replacing `DIN_TOKEN` in:
+```
+https://api.lantmateriet.se/open/topowebb-ccby/v1/wmts/token/DIN_TOKEN/1.0.0/topowebb/default/3857/{z}/{y}/{x}.png
+```
+Until that's done, every tile request simply fails (server rejects the
+placeholder token) and both maps show blank tiles — an honest failure
+mode with nothing to debug, just a key to fill in. Other CC0 layers work
+the same way, just swap `topowebb` for e.g. `topowebb_nedtonad` (a
+muted-colour basemap that reads well under markers).
+
+**For deployments outside Sweden**, or if you'd rather use an account you
+already have, Inställningar → "Kartleverantör" accepts any tile URL (with
+`{z}`/`{x}`/`{y}` placeholders and an API key baked into the query
+string) — this is the URL both "Online" mode's per-tile fetches and the
+bulk download use. Services like
+[MapTiler](https://www.maptiler.com/), [Stadia Maps](https://stadiamaps.com/),
+or [Thunderforest](https://www.thunderforest.com/) all have a free tier
+whose terms explicitly permit caching tiles for offline use (e.g.
+MapTiler's URL looks like
+`https://api.maptiler.com/maps/basic-v2/{z}/{x}/{y}.png?key=YOUR_KEY`).
+Besides the Inställningar area-size setting, `config.py`'s
+`MAP_CACHE_AREA_SIZES`/`MAP_CACHE_MIN_ZOOM`/`MAP_CACHE_MAX_ZOOM` constants
+can still be edited directly for further control (e.g. a custom radius, or
+a narrower zoom range) if the three presets don't fit.
+
+**A third option, if the WMTS API is unavailable or throttled: Lantmäteriet
+also distributes the same map as one giant file over plain, anonymous
+FTP** — no account, API key, or Geotorget order at all
+(`ftp://download-opendata.lantmateriet.se/Topografisk_webbkarta_raster/`).
+The catch: it's a single ~145 GB GeoPackage covering all of Sweden, not
+split by region, so it's not something to download whole. Inställningar →
+"Kartkälla" → "Lantmäteriets FTP (GDAL)" uses
+[GDAL](https://gdal.org/)'s `/vsicurl/` virtual filesystem
+(`lantmateriet_ftp.py`) to read just the tiles that intersect the
+configured area directly from the remote file via HTTP range requests,
+without downloading the rest — confirmed working (a real extracted tile
+came back as genuine Stockholm street-level map imagery). Needs GDAL
+installed separately (`brew install gdal` on macOS; not a Python
+dependency, so it's not in `requirements.txt`) — Inställningar flags it
+clearly if `gdal_translate` isn't on `PATH`.
+
+The real tradeoff: measured throughput is **~1.85 seconds per tile even
+batched one `gdal_translate` call per zoom level** (FTP's per-request
+connection overhead dominates) — several hours for this app's usual 50
+km/zoom 8–14 area, versus minutes for a working WMTS-style API. Because of
+that, this source is bulk-download-only: unlike the URL-based source,
+"Online" mode's live per-tile fetch is never used with it — Inställningar
+→ "Kartor för området" always serves strictly from the local cache when
+this source is selected, regardless of the Kartläge setting, and the bulk
+download itself is meant to run once, unattended, in the background. Worth
+it specifically if you want zero ongoing API dependency (no account to
+maintain, no throttling to ever hit again) and don't mind a long one-time
+wait; otherwise the WMTS API (once working) or MapTiler/Stadia/Thunderforest
+are faster.
+
+**Why not the public OpenStreetMap tile server, found by actually hitting
+it:** at the default zoom range (8–14), the default "Stort" area size (50
+km radius) is around 8,800 tiles — enough that OSM's public tile server
+can and does cut a download
+off partway with an automated abuse block (see their
+[tile usage policy](https://operations.osmfoundation.org/policies/tiles/)),
+even with the polite pacing and identifying User-Agent
+`signal_events/tiles.py` already sends — and in "Online" mode, even
+ordinary per-tile viewing can trigger the same block over time. The
+tricky part: it doesn't reply with an HTTP error — it replies `200 OK`
+with a genuine, normal-sized PNG (so it displays like a real tile in any
+map viewer) whose pixels spell out "Access blocked", plus an `X-Blocked`
+response header as the only reliable signal. `tiles.py` checks for that
+header and stops the whole bulk download immediately the moment it sees
+one (further requests would only be blocked the same way), and the
+on-demand per-tile path treats a block the same as any other failed
+fetch — falling back to a blank tile rather than caching it. If you hit
+this during a bulk download, Systemlogg will show a
+`map_tiles_download_blocked` entry, and Inställningar's tile count will
+simply be lower than expected — re-running the download later (once
+whatever triggered the block has cooled down) picks up from there, since
+already-cached tiles aren't re-fetched. A cache filled by a version of
+this code from *before* the block-detection fix existed may already
+contain the blocked notice image saved as if it were real tiles —
+Inställningar has a "Rensa blockerade kartrutor" button
+(`tiles.purge_blocked_tiles`) that finds and removes exactly those (by
+exact byte match against the known notice image), leaving genuine cached
+tiles untouched, so you can re-download just the gaps instead of starting
+over. Pointing Kartleverantör at Lantmäteriet or another provider whose
+terms actually permit this use avoids the whole problem.
 
 **Letting guests on the same WiFi/LAN use the web UI.** By default
 (`--host 127.0.0.1`, the default) the web UI is reachable only from the
@@ -333,10 +545,16 @@ Two other ways to get events in besides Signal sync, both in the web UI:
   that what's on screen (including the threat level) isn't real
   operational data. The same "Demo och övning" tab has a **"Rensa
   demohändelser"** button (confirmed before it takes effect) that removes
-  only the events/messages/attachments tagged as coming from that
-  scenario — every other stored report, the unit name, and the
-  adjacent-unit roster/status reports are left alone, unlike the blunter
-  "Rensa händelselogg"/"Rensa allt" resets on Inställningar.
+  the events/messages/attachments tagged as coming from that scenario,
+  *and* the demo-seeded 2.Kompani/3.Kompani status reports the same import
+  creates (both header badge and Sammanställd hotbedömning's adjacent-unit
+  card used to keep showing stale demo status otherwise) — every other
+  stored report, the unit name, the adjacent-unit roster, and any
+  *genuinely received* adjacent-unit status report are left alone (a demo
+  one is only ever distinguished by a negative `signal_timestamp`, never
+  by unit name, so a real unit happening to also be called "2.Kompani" is
+  never at risk), unlike the blunter "Rensa händelselogg"/"Rensa allt"
+  resets on Inställningar.
 
   An "Inkludera sensorhändelser" checkbox on the same tab controls
   whether each day's import also brings in that day's three automated
@@ -356,6 +574,15 @@ Two other ways to get events in besides Signal sync, both in the web UI:
   human-report story, which is identical either way — see
   `demo/generate_training_days.py`'s `generate_sensor_day` and
   `dag_NN_sensor.txt` for the generated files.
+
+**Inställningar is organized into expandable sections** — "Enhet" (unit
+name + adjacent-unit roster), "Signalgrupper", "Kartinställningar"
+(Kartläge/Kartkälla/Kartcentrum/Kartleverantör together), "AI-
+inställningar" (Ollama port), and "Lokala användare" (guest accounts +
+the LAN QR code) — each collapsed by default, with "Hoppa till" jump
+links at the top of the page. "Rensa allt" and "Rensa händelselogg" stay
+outside any section, always visible at the top, since they're
+destructive actions worth seeing without expanding anything.
 
 **Set the unit name** (web UI, "Inställningar" page) — used together with a
 freshly generated TNR (a Day-Hour-Minute date-time-group, e.g. `301842`)
@@ -628,6 +855,23 @@ expected and why the review step exists. If your reporters can use a
 consistent phrasing style (mentioning time, place, and counts explicitly),
 extraction quality improves a lot.
 
+**The Swedish military "7S rapport" template is recognized directly** and
+preferred over the generic heuristics above whenever a message has labeled
+lines — `Till`/`Från`/`TNR`/`Stund`/`Ställe`/`Styrka`/`Slag`/
+`Sysselsättning`/`Symbol`/`Reg.Nr`/`Sagesman`/`Sedan` — since the labels
+already say exactly which field is which (`parser._map_7s_fields`). This
+has been checked against real reports generated by the third-party tool
+[7srapport.com](https://7srapport.com/) (not affiliated with this
+project), which combines Styrka/Slag/Sysselsättning into one free-text
+`Händelse:` field instead of three separate lines, and writes a lone `-`
+for its blank optional fields (e.g. `Sedan: -`) rather than omitting the
+line — both are handled: `Händelse` falls back to the same best-effort
+count/object/activity heuristics as the plain free-text path, and a lone
+`-` is treated as no value at all. `Sagesman` (who actually observed and
+is vouching for the report) is what becomes "Rapporterad av", preferred
+over `Från` (who relayed the message) and over the Signal sender, since
+those two can genuinely differ from who's actually reporting.
+
 ## Data layout
 
 ```
@@ -669,6 +913,19 @@ pytest
   report/summary sends, triggered by a deliberate click in the web UI —
   it never sends anything on its own (`watch`/`sync` only read). The web
   UI binds to `127.0.0.1` by default so it isn't exposed on your network.
+- Map tiles default to "Online" mode (fetched live from Inställningar's
+  configured provider as needed, cached to `data/tiles/` as a side
+  effect) — set a tile provider token/key there before either map (the
+  "Kart-vy" view, or the map on an event's own page) will show real
+  imagery. "Lokal cache" mode and the "Ladda ner kartor för området"
+  bulk download remain available for a fully offline deployment. See
+  "Kart-vy" under Day-to-day usage. The `mgrs`/`certifi` PyPI packages this
+  depends on (see requirements.txt) are themselves offline once
+  installed — `certifi` in particular is there so tile requests work out
+  of the box even on a fresh python.org macOS install, which otherwise
+  ships without a populated CA certificate bundle and would fail every
+  HTTPS request with a certificate-verify error until you separately run
+  its "Install Certificates.command".
 
 ## License
 
