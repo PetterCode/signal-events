@@ -1,10 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Händelser{% endblock %}
+{% block title %}Tidslinje{% endblock %}
 {% block content %}
-  <h1>Händelser</h1>
+  <h1>Tidslinje</h1>
   <p>
     <a class="btn" href="{{ url_for('events.new_event') }}">+ Lägg till händelse</a>
+    <a class="btn btn-secondary" href="{{ url_for('events.new_adjacent_event') }}">+ Från angränsande enhet</a>
     <a class="btn btn-secondary" href="{{ url_for('events.import_events') }}">Importera från fil</a>
+    <a class="btn btn-secondary" href="{{ url_for('events.report') }}">Skapa rapport</a>
   </p>
   <div class="filters">
     Tidsperiod:
@@ -24,7 +26,7 @@
   <table>
     <thead>
       <tr>
-        <th>Tid</th><th>Plats</th><th>Antal</th><th>Objekt</th><th>Aktivitet</th>
+        <th>TNR</th><th>Tid</th><th>Plats</th><th>Antal</th><th>Objekt</th><th>Aktivitet</th>
         <th>Rapporterad av</th><th>Status</th><th>Foton</th><th></th>
       </tr>
     </thead>
@@ -32,6 +34,7 @@
       {% for row in rows %}
         {% set event = row.event %}
         <tr>
+          <td class="mono">{{ event_tnr(event.event_time, event.created_at) }}</td>
           <td>{{ event.event_time or "—" }}</td>
           <td>{{ event.place or "—" }}</td>
           <td>{{ event.count or "—" }}</td>
@@ -49,6 +52,9 @@
             {% endif %}
             {% if row.is_duplicate %}
               <span class="badge badge-trivial">dublett</span>
+            {% endif %}
+            {% if event.source_unit %}
+              <span class="badge badge-adjacent">från {{ event.source_unit }}</span>
             {% endif %}
           </td>
           <td>{{ row.attachments|length }}</td>
