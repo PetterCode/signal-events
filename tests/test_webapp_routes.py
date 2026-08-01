@@ -5,11 +5,15 @@ other test_* files for the same pattern). The exceptions are session
 persistence across requests and a couple of end-to-end route behaviors
 that can't be verified any other way."""
 
+import hashlib
 import json
 from pathlib import Path
 
-from signal_events import config, db as db_module
+import pytest
+
+from signal_events import config, db as db_module, demo_map, lantmateriet_ftp, tiles
 from signal_events.webapp import create_app
+from signal_events.webapp import routes as routes_module
 from signal_events.webapp.routes import _build_ai_context, _clear_event_attachment_files
 
 
@@ -220,6 +224,621 @@ def test_delete_event_route_on_unknown_id_returns_404():
     client = create_app().test_client()
     resp = client.post("/events/999999/delete")
     assert resp.status_code == 404
+
+
+def test_event_detail_post_saves_a_manually_dropped_pin():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db_module.insert_event(conn, message_id=message_id, fields={"place": "X"})
+
+    client = create_app().test_client()
+    client.post(f"/events/{event_id}", data={"place": "X", "lat": "58.6", "lon": "15.3"})
+
+    with db_module.get_connection() as conn:
+        event = db_module.get_event(conn, event_id)
+    assert event["lat"] == pytest.approx(58.6)
+    assert event["lon"] == pytest.approx(15.3)
+
+
+def test_event_detail_post_without_lat_lon_fields_leaves_existing_position_untouched():
+    """Regression guard: an ordinary field edit (no map click this
+    submission) must not wipe out a position that was set earlier --
+    _position_form_values() returning {} is what protects this."""
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "X", "lat": 58.6, "lon": 15.3}
+        )
+
+    client = create_app().test_client()
+    client.post(f"/events/{event_id}", data={"place": "X"})
+
+    with db_module.get_connection() as conn:
+        event = db_module.get_event(conn, event_id)
+    assert event["lat"] == pytest.approx(58.6)
+    assert event["lon"] == pytest.approx(15.3)
+
+
+def test_event_detail_shows_a_hint_when_the_position_is_outside_the_cached_area():
+    """Regression: an event positioned far from Kartcentrum used to just
+    render an all-gray map with no explanation -- the hint tells the user
+    why, instead of looking like a broken map."""
+    with db_module.get_connection() as conn:
+        db_module.set_map_center(conn, 59.326944, 18.071667)
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        # ~250 km from Kartcentrum -- well outside even the "large" preset.
+        event_id = db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "X", "lat": 61.5, "lon": 18.07}
+        )
+
+    client = create_app().test_client()
+    resp = client.get(f"/events/{event_id}")
+
+    assert resp.status_code == 200
+    assert "utanför det nedladdade kartområdet".encode() in resp.data
+
+
+def test_event_detail_has_no_hint_when_the_position_is_inside_the_cached_area():
+    with db_module.get_connection() as conn:
+        db_module.set_map_center(conn, 59.326944, 18.071667)
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "X", "lat": 59.33, "lon": 18.07}
+        )
+
+    client = create_app().test_client()
+    resp = client.get(f"/events/{event_id}")
+
+    assert resp.status_code == 200
+    assert "utanför det nedladdade kartområdet".encode() not in resp.data
+
+
+def test_map_view_passes_min_zoom_so_fitbounds_cant_collapse_to_a_blank_map():
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert f"var minZoom = {config.MAP_CACHE_MIN_ZOOM};".encode() in resp.data
+
+
+def test_map_view_clamped_zoom_centers_on_kartcentrum_not_the_bounds_centroid():
+    """Regression: when a far-outlier marker forces the min-zoom clamp,
+    centering on the bounds' own centroid can itself land on ground with
+    no cached tiles (dragged there by the outlier) -- Kartcentrum is the
+    one point guaranteed to have coverage, so the clamped view must use
+    it instead of bounds.getCenter()."""
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"map.setView(hasCenter ? [centerLat, centerLon] : bounds.getCenter(), minZoom);" in resp.data
+
+
+def test_map_view_flags_which_markers_are_inside_the_cached_area():
+    """Regression: even at a zoom that clears the min-zoom clamp,
+    fitBounds still centers on the bounds' own centroid -- one marker far
+    outside the cached square drags that centroid onto uncached ground
+    too, showing an all-gray map despite "working" zoom math. The fix is
+    to keep out-of-cache markers off the fit calculation entirely (they
+    still show on the map, just don't steer the initial view) -- this
+    checks the per-marker in_cache flag the JS relies on to do that."""
+    with db_module.get_connection() as conn:
+        db_module.set_map_center(conn, 59.5321, 17.3004)
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "Nara", "lat": 59.5335, "lon": 17.301}
+        )
+        db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "Langt bort", "lat": 61.8, "lon": 17.3}
+        )
+
+    client = create_app().test_client()
+    resp = client.get("/karta?since=all")
+
+    assert resp.status_code == 200
+    assert b'"in_cache": true' in resp.data
+    assert b'"in_cache": false' in resp.data
+    assert b"!hasCenter || m.in_cache" in resp.data
+
+
+def test_map_view_marks_kartcentrum_with_its_own_marker_when_a_center_is_set():
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"Kartcentrum (Inst" in resp.data
+    assert b"L.circleMarker" in resp.data
+
+
+def test_map_view_has_no_kartcentrum_marker_when_no_center_is_set():
+    """The circleMarker code is only ever reached at runtime when
+    hasCenter is true -- with no center configured, that guard must be
+    false so no marker gets drawn even though an event marker still puts
+    the rest of the map script on the page."""
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "X", "lat": 59.33, "lon": 18.06}
+        )
+    client = create_app().test_client()
+
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"var hasCenter = false;" in resp.data
+
+
+def test_new_event_get_passes_map_context_to_the_template():
+    client = create_app().test_client()
+    resp = client.get("/events/new")
+
+    assert resp.status_code == 200
+    assert b'id="new-event-map"' in resp.data
+
+
+def test_new_event_form_has_a_fill_current_time_button():
+    client = create_app().test_client()
+    resp = client.get("/events/new")
+
+    assert resp.status_code == 200
+    assert b'id="event-time-now-btn"' in resp.data
+
+
+def test_event_detail_has_a_fill_current_time_button():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db_module.insert_event(conn, message_id=message_id, fields={"place": "X"})
+
+    client = create_app().test_client()
+    resp = client.get(f"/events/{event_id}")
+
+    assert resp.status_code == 200
+    assert b'id="event-time-now-btn"' in resp.data
+
+
+def test_now_button_fills_in_day_hour_minute_not_just_clock_time():
+    """Regression: the "Nu" button used to fill in only "HH:MM", which
+    never matches naming._VALID_TNR_RE -- so a manually entered event's
+    displayed TNR silently fell back to its created_at timestamp instead
+    of the time it actually happened. It must fill in the same
+    day-hour-minute date-time-group naming.generate_tnr uses everywhere
+    else, on every form that has the button."""
+    client = create_app().test_client()
+    for path in ("/events/new", "/events/new-adjacent"):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        body = resp.data.decode("utf-8")
+        assert "now.getDate()" in body
+        assert 'value = dd + hh + mm;' in body
+        assert 'value = hh + ":" + mm;' not in body
+
+
+def test_new_event_post_saves_a_manually_dropped_pin():
+    """Regression: event_form.html previously had no map/position UI at
+    all, and new_event() never looked at lat/lon form fields -- manually
+    entered events silently never got a position no matter what."""
+    client = create_app().test_client()
+    resp = client.post(
+        "/events/new",
+        data={"place": "Östra grinden", "lat": "58.6", "lon": "15.3"},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+    assert len(events) == 1
+    assert events[0]["lat"] == pytest.approx(58.6)
+    assert events[0]["lon"] == pytest.approx(15.3)
+
+
+def test_new_event_post_without_a_pin_auto_extracts_an_mgrs_reference_from_place():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "Östra grinden 33VVN1234567890"})
+
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+    assert len(events) == 1
+    assert events[0]["lat"] is not None
+    assert events[0]["lon"] is not None
+
+
+def test_new_event_post_without_a_pin_auto_extracts_decimal_degrees_from_place():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "Östra grinden 59.3269, 18.0717"})
+
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+    assert len(events) == 1
+    assert events[0]["lat"] == pytest.approx(59.3269)
+    assert events[0]["lon"] == pytest.approx(18.0717)
+
+
+def test_new_event_post_manual_pin_wins_over_an_mgrs_reference_in_the_text():
+    client = create_app().test_client()
+    client.post(
+        "/events/new",
+        data={"place": "Östra grinden 33VVN1234567890", "lat": "58.6", "lon": "15.3"},
+    )
+
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+    assert len(events) == 1
+    assert events[0]["lat"] == pytest.approx(58.6)
+    assert events[0]["lon"] == pytest.approx(15.3)
+
+
+def test_new_event_post_without_any_position_leaves_lat_lon_null():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "Huvudentrén"})
+
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+    assert len(events) == 1
+    assert events[0]["lat"] is None
+    assert events[0]["lon"] is None
+
+
+def test_new_adjacent_event_get_shows_the_source_unit_field_and_known_units():
+    with db_module.get_connection() as conn:
+        db_module.add_adjacent_unit(conn, "2.Pluton")
+
+    client = create_app().test_client()
+    resp = client.get("/events/new-adjacent")
+
+    assert resp.status_code == 200
+    assert b'name="source_unit"' in resp.data
+    assert b"2.Pluton" in resp.data
+
+
+def test_new_adjacent_event_post_tags_the_event_with_the_source_unit():
+    client = create_app().test_client()
+    resp = client.post(
+        "/events/new-adjacent",
+        data={"place": "Norra grinden", "source_unit": "2.Pluton"},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+    assert len(events) == 1
+    assert events[0]["source_unit"] == "2.Pluton"
+
+
+def test_new_adjacent_event_post_without_a_source_unit_is_rejected():
+    client = create_app().test_client()
+    resp = client.post(
+        "/events/new-adjacent", data={"place": "Norra grinden"}, follow_redirects=True
+    )
+
+    assert resp.status_code == 200
+    assert "Ange vilken angränsande enhet".encode() in resp.data
+    with db_module.get_connection() as conn:
+        assert db_module.list_events(conn) == []
+
+
+def test_events_list_shows_a_badge_for_adjacent_sourced_events():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "X", "source_unit": "2.Pluton"}
+        )
+
+    client = create_app().test_client()
+    resp = client.get("/events")
+
+    assert resp.status_code == 200
+    assert b"fr\xc3\xa5n 2.Pluton" in resp.data
+
+
+def test_event_detail_shows_a_badge_for_an_adjacent_sourced_event():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "X", "source_unit": "2.Pluton"}
+        )
+
+    client = create_app().test_client()
+    resp = client.get(f"/events/{event_id}")
+
+    assert resp.status_code == 200
+    assert "Från angränsande enhet: 2.Pluton".encode() in resp.data
+
+
+def test_report_route_excludes_events_received_from_adjacent_units():
+    """Regression guard for the own_only choke point: a generated report
+    is this unit's own account, so an adjacent-sourced event must never
+    show up in it even though it's a perfectly normal, reviewed event."""
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Ovan enhets egen", "needs_review": False},
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Fran angransande", "needs_review": False, "source_unit": "2.Pluton"},
+        )
+
+    client = create_app().test_client()
+    resp = client.post("/report", data={"since": "all", "format": "text"})
+
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    assert "Ovan enhets egen" in body
+    assert "Fran angransande" not in body
+
+
+def test_summary_excludes_events_received_from_adjacent_units():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Egen", "needs_review": False, "object": "person"},
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={
+                "place": "Angransande", "needs_review": False, "object": "person",
+                "source_unit": "2.Pluton",
+            },
+        )
+
+    summary = routes_module._compute_summary("all", include_unreviewed=False)
+    assert summary.total_events == 1
+
+
+def test_map_view_default_includes_adjacent_sourced_events():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "X", "lat": 58.6, "lon": 15.3, "source_unit": "2.Pluton"},
+        )
+
+    client = create_app().test_client()
+    resp = client.get("/karta?since=all")
+
+    assert resp.status_code == 200
+    assert b'"source_unit": "2.Pluton"' in resp.data
+    assert "Dölj händelser från angränsande enheter".encode() in resp.data
+
+
+def test_map_view_adjacent_0_excludes_adjacent_sourced_markers():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        own_id = db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "Egen", "lat": 58.6, "lon": 15.3}
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Angransande", "lat": 58.7, "lon": 15.4, "source_unit": "2.Pluton"},
+        )
+
+    client = create_app().test_client()
+    resp = client.get("/karta?since=all&adjacent=0")
+
+    assert resp.status_code == 200
+    assert f'"id": {own_id}'.encode() in resp.data
+    assert b"2.Pluton" not in resp.data
+    assert "Visa händelser från angränsande enheter".encode() in resp.data
+
+
+def test_map_view_default_shows_all_events_toggle_link():
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert "Dölj alla händelser".encode() in resp.data
+    assert b"var showEvents = true;" in resp.data
+
+
+def test_map_view_events_0_hides_markers_but_keeps_the_accurate_count():
+    """Regression: hiding all events is a display preference, not a data
+    filter -- the "N händelser" hint must still reflect the real count
+    (and JS gets showEvents=false to suppress rendering the markers),
+    not silently report zero as if none existed."""
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "X", "lat": 58.6, "lon": 15.3}
+        )
+
+    client = create_app().test_client()
+    resp = client.get("/karta?since=all&events=0")
+
+    assert resp.status_code == 200
+    assert b"1 h\xc3\xa4ndelse med k\xc3\xa4nd position" in resp.data
+    assert b"var showEvents = false;" in resp.data
+    assert "Visa alla händelser".encode() in resp.data
+    assert "Dolda".encode() in resp.data
+
+
+def test_map_view_renders_a_crosshair_and_position_box():
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"map-crosshair" in resp.data
+    assert b"map-position-box" in resp.data
+    assert b"/karta/mgrs?lat=" in resp.data
+
+
+def test_map_view_persists_pan_zoom_across_visits_via_local_storage():
+    """Regression: Kart-vy must remember the last pan/zoom when the user
+    navigates to another tab and back -- since each visit is a fresh
+    page load (no SPA state), that has to be localStorage, restored in
+    place of the usual fit-to-markers/Kartcentrum default, and kept
+    current on every "moveend"."""
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"signal-events:karta:view" in resp.data
+    assert b"localStorage.getItem(VIEW_STORAGE_KEY)" in resp.data
+    assert b"localStorage.setItem(VIEW_STORAGE_KEY" in resp.data
+    assert b'map.setView([savedView.lat, savedView.lng], savedView.zoom);' in resp.data
+    assert b'map.on("moveend", saveCurrentView);' in resp.data
+
+
+def test_map_center_mgrs_route_converts_lat_lon_to_mgrs():
+    client = create_app().test_client()
+    resp = client.get("/karta/mgrs?lat=59.326944&lon=18.071667")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["mgrs"].startswith("34VCL")
+
+
+def test_map_center_mgrs_route_requires_both_coordinates():
+    client = create_app().test_client()
+    resp = client.get("/karta/mgrs?lat=59.33")
+
+    assert resp.status_code == 400
+    assert resp.get_json()["mgrs"] is None
+
+
+def test_event_detail_post_clear_position_button_removes_the_pin():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db_module.insert_event(
+            conn, message_id=message_id, fields={"place": "X", "lat": 58.6, "lon": 15.3}
+        )
+
+    client = create_app().test_client()
+    client.post(
+        f"/events/{event_id}",
+        data={"place": "X", "lat": "58.6", "lon": "15.3", "clear_position": "1"},
+    )
+
+    with db_module.get_connection() as conn:
+        event = db_module.get_event(conn, event_id)
+    assert event["lat"] is None
+    assert event["lon"] is None
+
+
+def test_map_view_lists_only_events_that_have_a_position():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Kajen", "object": "Personbil", "lat": 58.6, "lon": 15.3},
+        )
+        db_module.insert_event(conn, message_id=message_id, fields={"place": "Norra grinden"})
+
+    client = create_app().test_client()
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"Kajen" in resp.data
+    assert b"1 h\xc3\xa4ndelse med k\xc3\xa4nd position" in resp.data
+
+
+def test_map_view_shows_empty_state_when_no_events_have_a_position():
+    client = create_app().test_client()
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert "Inga händelser med känd position under vald tidsperiod".encode() in resp.data
+
+
+def test_map_view_period_selection_filters_markers_like_the_summary_page():
+    """Kart-vy offers the same Tidsperiod selection (24 tim/7 dagar/30
+    dagar/Alla) as Sammanställd hotbedömning and Tidslinje, filtering
+    which positioned events show as markers the same way list_events
+    already filters those other views -- not just decorative links."""
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        old_event = db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Gammal position", "lat": 58.6, "lon": 15.3},
+        )
+        conn.execute(
+            "UPDATE events SET created_at = ? WHERE id = ?",
+            ("2020-01-01T10:00:00+00:00", old_event),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Ny position", "lat": 58.7, "lon": 15.4},
+        )
+
+    client = create_app().test_client()
+
+    default_resp = client.get("/karta")
+    assert b"Ny position" in default_resp.data
+    assert b"Gammal position" not in default_resp.data
+    assert b"1 h\xc3\xa4ndelse med k\xc3\xa4nd position" in default_resp.data
+
+    all_resp = client.get("/karta?since=all")
+    assert b"Ny position" in all_resp.data
+    assert b"Gammal position" in all_resp.data
+    assert b"2 h\xc3\xa4ndelser med k\xc3\xa4nd position" in all_resp.data
+
+    day_resp = client.get("/karta?since=24h")
+    assert b"Gammal position" not in day_resp.data
 
 
 def test_summary_excludes_a_duplicate_report_of_the_same_incident():
@@ -692,6 +1311,42 @@ def test_demo_clear_route_removes_demo_events_and_clears_the_header_badge():
         assert db_module.has_demo_events(conn) is False
 
 
+def test_demo_clear_route_also_removes_demo_seeded_adjacent_reports():
+    """Regression: importing a training day also seeds adjacent-unit
+    status reports (2.Kompani/3.Kompani, see adjacent_status.json) -- these
+    used to survive "clear demo data" entirely, leaving stale demo status
+    visible in the header badge / Sammanställd hotbedömning's adjacent-unit
+    card even after every demo event was gone."""
+    client = create_app().test_client()
+    client.post("/events/import/training/1")
+
+    with db_module.get_connection() as conn:
+        before = db_module.list_latest_adjacent_reports_per_unit(conn)
+    assert before, "expected demo import to have seeded adjacent-unit reports"
+
+    client.post("/events/import/demo/clear")
+
+    with db_module.get_connection() as conn:
+        after = db_module.list_latest_adjacent_reports_per_unit(conn)
+    assert after == []
+
+
+def test_demo_clear_route_leaves_a_genuinely_received_adjacent_report_untouched():
+    with db_module.get_connection() as conn:
+        real_id = db_module.insert_adjacent_report(
+            conn, signal_timestamp=1700000000000, sender_number="+15551234567",
+            sender_name="3.Kompani", unit_name="3.Kompani", body="Verklig status",
+        )
+
+    client = create_app().test_client()
+    client.post("/events/import/training/1")
+    client.post("/events/import/demo/clear")
+
+    with db_module.get_connection() as conn:
+        reports = db_module.list_adjacent_reports(conn)
+    assert any(r["id"] == real_id for r in reports)
+
+
 def test_demo_clear_route_leaves_non_demo_events_untouched():
     with db_module.get_connection() as conn:
         message_id = db_module.insert_message(
@@ -748,6 +1403,607 @@ def test_save_ollama_port_route_rejects_a_non_numeric_or_out_of_range_port():
 
     with db_module.get_connection() as conn:
         assert db_module.get_ollama_port(conn) != "0"
+
+
+def test_reset_database_route_restores_map_settings_to_their_defaults():
+    """"Rensa allt" must leave Kartleverantör, områdesstorlek, and
+    Kartcentrum back at their out-of-the-box defaults, not stuck on
+    whatever this unit had configured before the reset."""
+    client = create_app().test_client()
+    client.post("/settings/map-tile-source", data={"tile_source": "url"})
+    client.post("/settings/map-cache-area-size", data={"area_size": "large"})
+    client.post("/settings/map-center", data={"lat": "58.0", "lon": "12.0"})
+
+    resp = client.post("/database/reset", follow_redirects=True)
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_tile_source(conn) == db_module.MAP_TILE_SOURCE_LANTMATERIET_FTP
+        assert db_module.get_map_cache_area_size(conn) == config.MAP_CACHE_DEFAULT_AREA_SIZE
+        assert db_module.get_map_center(conn) is None
+
+    settings_resp = client.get("/settings")
+    assert b'value="lantmateriet_ftp" checked' in settings_resp.data
+    assert b'value="small" checked' in settings_resp.data
+    assert b"MGRS:" not in settings_resp.data
+
+
+def test_save_map_center_route_persists_a_valid_center():
+    client = create_app().test_client()
+    resp = client.post(
+        "/settings/map-center", data={"lat": "59.33", "lon": "18.06"}, follow_redirects=True
+    )
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        lat, lon = db_module.get_map_center(conn)
+    assert lat == pytest.approx(59.33)
+    assert lon == pytest.approx(18.06)
+
+
+def test_settings_page_shows_rensa_handelselogg_directly_below_rensa_allt():
+    client = create_app().test_client()
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    reset_all_pos = body.index("Rensa allt</button>")
+    reset_events_pos = body.index("Rensa händelselogg</button>")
+    enhet_pos = body.index('id="settings-enhet"')
+    assert reset_all_pos < reset_events_pos < enhet_pos
+
+
+def test_settings_page_groups_settings_into_named_expandable_sections():
+    client = create_app().test_client()
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    for section_id, heading in [
+        ("settings-enhet", "Enhet"),
+        ("settings-signalgrupper", "Signalgrupper"),
+        ("settings-karta", "Kartinställningar"),
+        ("settings-ai", "AI-inställningar"),
+    ]:
+        assert f'<details id="{section_id}">' in body
+        assert heading in body
+
+    # Lokala användare is the one group open by default -- the guest
+    # QR code inside it needs to be visible without an extra click, since
+    # it's typically glanced at live while onboarding a device, not
+    # configured once and forgotten like the others.
+    assert '<details id="settings-anvandare" open>' in body
+    assert "Lokala användare" in body
+
+    # Each group is an actual <details>/<summary> disclosure, not just a
+    # div with a matching id -- collapsed by default (except Lokala
+    # användare, see above) so the page stays scannable.
+    assert body.count("<details") == 5
+    assert body.count(' open>') == 1
+    assert "<summary>" in body
+
+
+def test_settings_page_enhet_group_contains_unit_name_and_adjacent_units():
+    with db_module.get_connection() as conn:
+        db_module.add_adjacent_unit(conn, "2.Pluton")
+
+    client = create_app().test_client()
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    enhet_start = body.index('id="settings-enhet"')
+    enhet_end = body.index("</details>", enhet_start)
+    enhet_section = body[enhet_start:enhet_end]
+    assert 'id="unit_name"' in enhet_section
+    assert "2.Pluton" in enhet_section
+
+
+def test_settings_page_karta_group_contains_all_map_settings():
+    client = create_app().test_client()
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    karta_start = body.index('id="settings-karta"')
+    karta_end = body.index("</details>", karta_start)
+    karta_section = body[karta_start:karta_end]
+    for needle in ('name="tile_mode"', 'name="tile_source"', 'name="area_size"', 'id="map_lat"', 'id="tile_url_template"'):
+        assert needle in karta_section
+
+
+def test_settings_page_anvandare_group_contains_guest_users_and_qr_code():
+    client = create_app().test_client()
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    anvandare_start = body.index('id="settings-anvandare"')
+    anvandare_end = body.index("</details>", anvandare_start)
+    anvandare_section = body[anvandare_start:anvandare_end]
+    assert 'id="new_user_name"' in anvandare_section
+    assert "Dela adress med gäster" in anvandare_section
+
+
+def test_settings_page_shows_kartcentrum_as_mgrs_once_a_center_is_set():
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.326944", "lon": "18.071667"})
+
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    assert "MGRS: 34VCL".encode() in resp.data
+
+
+def test_settings_page_has_no_mgrs_line_when_no_center_is_set():
+    client = create_app().test_client()
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    assert b"MGRS:" not in resp.data
+
+
+def test_settings_page_tile_count_ignores_stray_tiles_from_a_previous_center():
+    from signal_events import tiles as tiles_module
+
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.326944", "lon": "18.071667"})
+    with db_module.get_connection() as conn:
+        radius_km = db_module.get_map_cache_radius_km(conn)
+    expected = tiles_module.expected_tile_count(
+        59.326944, 18.071667, radius_km, config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM
+    )
+    # A leftover tile far from the configured center -- e.g. from before
+    # Kartcentrum was moved -- should not inflate the "cached" count past
+    # what's actually covering the current area.
+    stray_path = tiles_module.tile_path(config.TILE_CACHE_DIR, 10, 0, 0)
+    stray_path.parent.mkdir(parents=True)
+    stray_path.write_bytes(b"x")
+
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    assert f"0 av {expected} kartrutor cachade".encode() in resp.data
+
+
+def test_save_map_center_route_rejects_invalid_input():
+    client = create_app().test_client()
+
+    for bad_lat, bad_lon in [("not-a-number", "18.06"), ("999", "18.06"), ("59.33", "999")]:
+        resp = client.post(
+            "/settings/map-center", data={"lat": bad_lat, "lon": bad_lon}, follow_redirects=True
+        )
+        assert resp.status_code == 200
+        assert "Ogiltig position".encode() in resp.data
+
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_center(conn) is None
+
+
+def test_clear_map_center_route_removes_the_stored_center():
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    resp = client.post("/settings/map-center/clear", follow_redirects=True)
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_center(conn) is None
+
+
+def test_save_map_tile_url_route_persists_a_valid_template():
+    client = create_app().test_client()
+    resp = client.post(
+        "/settings/map-tile-url",
+        data={"tile_url_template": "https://api.maptiler.com/x/{z}/{x}/{y}.png?key=abc"},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_tile_url_template(conn) == "https://api.maptiler.com/x/{z}/{x}/{y}.png?key=abc"
+
+
+def test_save_map_tile_url_route_rejects_a_url_missing_placeholders():
+    client = create_app().test_client()
+    resp = client.post(
+        "/settings/map-tile-url",
+        data={"tile_url_template": "https://example.com/tiles.png"},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert "Ogiltig kart-URL".encode() in resp.data
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_tile_url_template(conn) == config.DEFAULT_TILE_URL_TEMPLATE
+
+
+def test_save_map_tile_url_route_with_empty_value_reverts_to_the_default():
+    client = create_app().test_client()
+    client.post(
+        "/settings/map-tile-url", data={"tile_url_template": "https://example.com/{z}/{x}/{y}.png"}
+    )
+
+    resp = client.post("/settings/map-tile-url", data={"tile_url_template": ""}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_tile_url_template(conn) == config.DEFAULT_TILE_URL_TEMPLATE
+
+
+def test_download_map_tiles_route_requires_a_center_to_be_set_first():
+    client = create_app().test_client()
+    resp = client.post("/settings/map-center/download", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "Sätt ett kartcentrum".encode() in resp.data
+
+
+def test_download_map_tiles_route_rejects_when_the_area_exceeds_the_tile_count_cap(monkeypatch):
+    monkeypatch.setattr(config, "MAP_CACHE_MAX_TILE_COUNT", 0)
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    resp = client.post("/settings/map-center/download", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "överstiger".encode() in resp.data
+
+
+def test_download_map_tiles_route_refuses_a_second_concurrent_download():
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+
+    assert routes_module._tile_download_lock.acquire(blocking=False)
+    try:
+        resp = client.post("/settings/map-center/download", follow_redirects=True)
+        assert resp.status_code == 200
+        assert "En nedladdning pågår redan".encode() in resp.data
+    finally:
+        routes_module._tile_download_lock.release()
+
+
+def test_download_map_tiles_route_runs_the_download_and_logs_completion(monkeypatch):
+    """Runs the background thread synchronously (via a fake Thread) so the
+    test is deterministic -- verifies the route wires tiles.download_area
+    correctly and logs a system event on completion, without ever hitting
+    the real network."""
+    calls = []
+
+    def fake_download_area(center_lat, center_lon, radius_km, min_zoom, max_zoom, cache_dir, tile_url_template=None):
+        calls.append((center_lat, center_lon, radius_km, min_zoom, max_zoom, cache_dir, tile_url_template))
+        return (3, 1, 0, False)
+
+    class ImmediateThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self._target = target
+            self._args = args
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr(tiles, "download_area", fake_download_area)
+    monkeypatch.setattr(routes_module.threading, "Thread", ImmediateThread)
+
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+    client.post("/settings/map-tile-source", data={"tile_source": "url"})
+
+    resp = client.post("/settings/map-center/download", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert len(calls) == 1
+    assert calls[0][0] == pytest.approx(59.33)
+    assert calls[0][1] == pytest.approx(18.06)
+    with db_module.get_connection() as conn:
+        entries = db_module.list_system_log(conn)
+    event_types = [e["event_type"] for e in entries]
+    assert "map_tiles_download_started" in event_types
+    assert "map_tiles_download_finished" in event_types
+    assert not routes_module._tile_download_lock.locked()
+
+
+def test_download_map_tiles_route_uses_lantmateriet_ftp_when_that_source_is_configured(monkeypatch):
+    calls = []
+
+    def fake_extract(center_lat, center_lon, radius_km, min_zoom, max_zoom, cache_dir):
+        calls.append((center_lat, center_lon, radius_km, min_zoom, max_zoom, cache_dir))
+        return (42, 0)
+
+    class ImmediateThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self._target = target
+            self._args = args
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr(lantmateriet_ftp, "gdal_available", lambda: True)
+    monkeypatch.setattr(lantmateriet_ftp, "extract_area_to_cache", fake_extract)
+    monkeypatch.setattr(
+        tiles, "download_area",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not use the URL downloader for this source")),
+    )
+    monkeypatch.setattr(routes_module.threading, "Thread", ImmediateThread)
+
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+    client.post("/settings/map-tile-source", data={"tile_source": "lantmateriet_ftp"})
+
+    resp = client.post("/settings/map-center/download", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert len(calls) == 1
+    assert calls[0][0] == pytest.approx(59.33)
+    with db_module.get_connection() as conn:
+        entries = db_module.list_system_log(conn)
+    event_types = [e["event_type"] for e in entries]
+    assert "map_tiles_download_finished" in event_types
+    finished = next(e for e in entries if e["event_type"] == "map_tiles_download_finished")
+    assert "lantmateriet_ftp" in finished["detail"]
+    assert not routes_module._tile_download_lock.locked()
+
+
+def test_download_map_tiles_route_rejects_lantmateriet_ftp_when_gdal_is_missing(monkeypatch):
+    monkeypatch.setattr(lantmateriet_ftp, "gdal_available", lambda: False)
+
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+    client.post("/settings/map-tile-source", data={"tile_source": "lantmateriet_ftp"})
+
+    resp = client.post("/settings/map-center/download", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "GDAL".encode() in resp.data
+    assert not routes_module._tile_download_lock.locked()
+
+
+def test_save_map_tile_source_route_persists_a_valid_source():
+    client = create_app().test_client()
+    resp = client.post(
+        "/settings/map-tile-source", data={"tile_source": "lantmateriet_ftp"}, follow_redirects=True
+    )
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_tile_source(conn) == db_module.MAP_TILE_SOURCE_LANTMATERIET_FTP
+
+
+def test_save_map_tile_source_route_rejects_an_unknown_source():
+    client = create_app().test_client()
+    resp = client.post("/settings/map-tile-source", data={"tile_source": "wmts"}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "Ogiltig kartkälla".encode() in resp.data
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_tile_source(conn) == db_module.MAP_TILE_SOURCE_LANTMATERIET_FTP
+
+
+def test_save_map_cache_area_size_route_persists_a_valid_size():
+    client = create_app().test_client()
+    resp = client.post("/settings/map-cache-area-size", data={"area_size": "small"}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_cache_area_size(conn) == "small"
+
+
+def test_save_map_cache_area_size_route_rejects_an_unknown_size():
+    client = create_app().test_client()
+    resp = client.post("/settings/map-cache-area-size", data={"area_size": "huge"}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "Ogiltig områdesstorlek".encode() in resp.data
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_cache_area_size(conn) == "small"
+
+
+def test_download_map_tiles_route_uses_the_configured_area_size(monkeypatch):
+    """Regression: the download must use whichever radius the selected
+    area-size preset resolves to, not a fixed constant -- verified by
+    switching to "small" (0.5 km) and checking that's what actually gets
+    passed through to tiles.download_area."""
+    calls = []
+
+    def fake_download_area(center_lat, center_lon, radius_km, min_zoom, max_zoom, cache_dir, tile_url_template=None):
+        calls.append(radius_km)
+        return (0, 0, 0, False)
+
+    class ImmediateThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self._target = target
+            self._args = args
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr(tiles, "download_area", fake_download_area)
+    monkeypatch.setattr(routes_module.threading, "Thread", ImmediateThread)
+
+    client = create_app().test_client()
+    client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
+    client.post("/settings/map-tile-source", data={"tile_source": "url"})
+    client.post("/settings/map-cache-area-size", data={"area_size": "small"})
+
+    resp = client.post("/settings/map-center/download", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert calls == [pytest.approx(0.5)]
+
+
+def test_map_tile_route_forces_cache_only_when_source_is_lantmateriet_ftp_even_in_online_mode(monkeypatch):
+    """Online mode normally fetches a missing tile live -- but that's far
+    too slow through this source (see lantmateriet_ftp.py), so it must
+    never even attempt it here, regardless of the configured mode."""
+    monkeypatch.setattr(
+        tiles, "fetch_tile_on_demand",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not fetch live through this source")),
+    )
+    client = create_app().test_client()
+    with db_module.get_connection() as conn:
+        db_module.set_map_tile_source(conn, db_module.MAP_TILE_SOURCE_LANTMATERIET_FTP)
+        assert db_module.get_map_tile_mode(conn) == db_module.MAP_TILE_MODE_ONLINE
+
+    resp = client.get("/tiles/8/999999/999999.png")
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "image/png"
+
+
+def test_map_tile_route_serves_a_cached_tile_file():
+    """Default map tile mode is "online", but a cache hit is served
+    straight from disk either way -- fetch_tile_on_demand only reaches
+    out to the network for a miss."""
+    tile_bytes = b"\x89PNG\r\n\x1a\nfake-cached-tile"
+    path = tiles.tile_path(config.TILE_CACHE_DIR, 8, 100, 200)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(tile_bytes)
+
+    client = create_app().test_client()
+    resp = client.get("/tiles/8/100/200.png")
+
+    assert resp.status_code == 200
+    assert resp.data == tile_bytes
+
+
+def test_map_tile_route_in_online_mode_fetches_a_missing_tile_live(monkeypatch):
+    calls = []
+
+    def fake_fetch_on_demand(zoom, x, y, cache_dir, tile_url_template):
+        calls.append((zoom, x, y, tile_url_template))
+        return b"\x89PNG\r\n\x1a\nlive-fetched-tile"
+
+    monkeypatch.setattr(tiles, "fetch_tile_on_demand", fake_fetch_on_demand)
+
+    client = create_app().test_client()
+    client.post("/settings/map-tile-source", data={"tile_source": "url"})
+    resp = client.get("/tiles/8/999999/999999.png")
+
+    assert resp.status_code == 200
+    assert resp.data == b"\x89PNG\r\n\x1a\nlive-fetched-tile"
+    assert calls == [(8, 999999, 999999, config.DEFAULT_TILE_URL_TEMPLATE)]
+
+
+def test_map_tile_route_in_online_mode_falls_back_to_blank_when_the_live_fetch_fails(monkeypatch):
+    monkeypatch.setattr(tiles, "fetch_tile_on_demand", lambda *a, **k: None)
+
+    client = create_app().test_client()
+    client.post("/settings/map-tile-source", data={"tile_source": "url"})
+    resp = client.get("/tiles/8/999999/999999.png")
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "image/png"
+
+
+def test_map_tile_route_in_local_mode_never_fetches_live_and_serves_blank_when_not_cached(monkeypatch):
+    def fake_fetch_on_demand(*args, **kwargs):
+        raise AssertionError("local mode must never fetch tiles live")
+
+    monkeypatch.setattr(tiles, "fetch_tile_on_demand", fake_fetch_on_demand)
+
+    client = create_app().test_client()
+    with db_module.get_connection() as conn:
+        db_module.set_map_tile_mode(conn, db_module.MAP_TILE_MODE_LOCAL)
+
+    resp = client.get("/tiles/8/999999/999999.png")
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "image/png"
+
+
+def test_map_tile_route_in_local_mode_still_serves_a_cached_tile_file():
+    tile_bytes = b"\x89PNG\r\n\x1a\nfake-cached-tile"
+    path = tiles.tile_path(config.TILE_CACHE_DIR, 8, 100, 200)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(tile_bytes)
+
+    client = create_app().test_client()
+    with db_module.get_connection() as conn:
+        db_module.set_map_tile_mode(conn, db_module.MAP_TILE_MODE_LOCAL)
+
+    resp = client.get("/tiles/8/100/200.png")
+
+    assert resp.status_code == 200
+    assert resp.data == tile_bytes
+
+
+def test_map_tile_route_serves_the_cartoon_demo_map_once_demo_events_exist(monkeypatch):
+    """Demo/training event positions are fictional (see
+    demo/generate_training_days.py) -- once any exist, every tile request
+    should get the procedural cartoon dummy map (demo_map.py) instead of
+    reaching out to whatever real provider is configured, regardless of
+    the Inställningar tile mode, so trying the demo never needs a real
+    tile provider token/network at all."""
+    calls = []
+    monkeypatch.setattr(demo_map, "generate_demo_tile", lambda z, x, y: calls.append((z, x, y)) or b"cartoon-bytes")
+    monkeypatch.setattr(
+        tiles, "fetch_tile_on_demand",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not fetch a real tile in demo mode")),
+    )
+
+    client = create_app().test_client()
+    client.post("/events/import/training/1")
+
+    resp = client.get("/tiles/8/100/200.png")
+
+    assert resp.status_code == 200
+    assert resp.data == b"cartoon-bytes"
+    assert calls == [(8, 100, 200)]
+
+
+def test_map_tile_route_uses_the_real_provider_when_no_demo_events_exist(monkeypatch):
+    monkeypatch.setattr(
+        demo_map, "generate_demo_tile",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not use the cartoon map without demo events")),
+    )
+
+    client = create_app().test_client()
+    resp = client.get("/tiles/8/999999/999999.png")
+
+    assert resp.status_code == 200
+    assert resp.mimetype == "image/png"
+
+
+def test_save_map_tile_mode_route_persists_a_valid_mode():
+    client = create_app().test_client()
+    resp = client.post("/settings/map-tile-mode", data={"tile_mode": "local"}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_tile_mode(conn) == db_module.MAP_TILE_MODE_LOCAL
+
+
+def test_save_map_tile_mode_route_rejects_an_unknown_mode():
+    client = create_app().test_client()
+    resp = client.post("/settings/map-tile-mode", data={"tile_mode": "offline"}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "Ogiltigt kartläge".encode() in resp.data
+    with db_module.get_connection() as conn:
+        assert db_module.get_map_tile_mode(conn) == db_module.MAP_TILE_MODE_ONLINE
+
+
+def test_purge_blocked_map_tiles_route_removes_only_blocked_tiles(monkeypatch):
+    monkeypatch.setattr(tiles, "_BLOCKED_TILE_SHA256", hashlib.sha256(b"blocked").hexdigest())
+
+    blocked_path = tiles.tile_path(config.TILE_CACHE_DIR, 10, 1, 1)
+    blocked_path.parent.mkdir(parents=True)
+    blocked_path.write_bytes(b"blocked")
+
+    real_path = tiles.tile_path(config.TILE_CACHE_DIR, 10, 2, 2)
+    real_path.parent.mkdir(parents=True)
+    real_path.write_bytes(b"real-tile")
+
+    client = create_app().test_client()
+    resp = client.post("/settings/map-center/purge-blocked", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "1 blockerade".encode() in resp.data
+    assert not blocked_path.exists()
+    assert real_path.exists()
+    with db_module.get_connection() as conn:
+        event_types = [e["event_type"] for e in db_module.list_system_log(conn)]
+    assert "map_tiles_purge_blocked" in event_types
 
 
 def test_report_send_uses_the_configured_report_group_name():
@@ -837,6 +2093,25 @@ def test_lan_qrcode_route_404s_when_not_reachable():
     client = create_app().test_client()
     resp = client.get("/settings/lan-qrcode.png")
     assert resp.status_code == 404
+
+
+def test_events_list_shows_a_tnr_column_before_the_tid_column():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id, fields={"event_time": "270600", "place": "A"}
+        )
+
+    client = create_app().test_client()
+    resp = client.get("/events")
+
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    assert body.index("<th>TNR</th>") < body.index("<th>Tid</th>")
+    assert ">270600<" in body
 
 
 def test_events_list_orders_by_tnr_not_by_created_at():

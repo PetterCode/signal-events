@@ -179,6 +179,37 @@ def test_cmd_report_excludes_newly_classified_trivial_events(tmp_path):
         assert trivial[0]["is_trivial"] == 1
 
 
+def test_cmd_report_excludes_events_received_from_adjacent_units(tmp_path):
+    from signal_events import db as db_module
+
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Egen", "object": "Beväpnad person", "needs_review": False},
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={
+                "place": "Angränsande", "object": "Misstänkt fordon", "needs_review": False,
+                "source_unit": "2.Pluton",
+            },
+        )
+
+    output_path = tmp_path / "report.md"
+    args = MagicMock(
+        since="all", include_unreviewed=False, format="markdown", output=str(output_path),
+    )
+    cli.cmd_report(args)
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "Beväpnad person" in content
+    assert "Misstänkt fordon" not in content
+
+
 def test_cmd_report_text_format_writes_plain_text_file(tmp_path):
     from signal_events import db as db_module
 
@@ -237,3 +268,33 @@ def test_cmd_summary_text_format_writes_plain_text_file_and_logs_entry(tmp_path)
     assert entries[0]["source"] == "cli"
     assert entries[0]["format"] == "text"
     assert entries[0]["period_label"] == "all"
+
+
+def test_cmd_summary_excludes_events_received_from_adjacent_units(tmp_path):
+    from signal_events import db as db_module
+
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "A", "object": "Civil", "needs_review": False},
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={
+                "place": "B", "object": "Civil", "needs_review": False,
+                "source_unit": "2.Pluton",
+            },
+        )
+
+    output_path = tmp_path / "summary.txt"
+    args = MagicMock(
+        since="all", include_unreviewed=False, format="text", output=str(output_path), llm=False,
+    )
+    cli.cmd_summary(args)
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "Rapporter i underlaget: 1" in content
