@@ -2,7 +2,7 @@ Till: Stabsassistent
 Från: Sensorgateway
 TNR: 050247
 Stund: 050247
-Ställe: Trådlarm vid Östra grinden
+Ställe: Trådlarm vid Östra grinden (34VCL3488376750)
 Styrka: -
 Sysselsättning: Sensor aktiverad
 Sagesman: Sensorgateway
@@ -13,7 +13,7 @@ Till: Stabsassistent
 Från: Sensorgateway
 TNR: 051139
 Stund: 051139
-Ställe: Rörelsedetektor vid Skogsbrynet vid förrådet
+Ställe: Rörelsedetektor vid Skogsbrynet vid förrådet (34VCL3484776852)
 Styrka: -
 Sysselsättning: Sensor aktiverad
 Sagesman: Sensorgateway
@@ -24,7 +24,7 @@ Till: Stabsassistent
 Från: Sensorgateway
 TNR: 051958
 Stund: 051958
-Ställe: Kamera vid Huvudentrén
+Ställe: Kamera vid Huvudentrén (34VCL3470876658)
 Styrka: 1
 Sysselsättning: Sensor aktiverad
 Sagesman: Sensorgateway

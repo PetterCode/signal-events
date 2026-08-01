@@ -2,7 +2,7 @@ Till: Stabsassistent
 Från: Sensorgateway
 TNR: 070247
 Stund: 070247
-Ställe: Trådlarm bakom förrådet
+Ställe: Trådlarm bakom förrådet (34VCL3482376820)
 Styrka: -
 Sysselsättning: Sensor aktiverad
 Sagesman: Sensorgateway
@@ -13,7 +13,7 @@ Till: Stabsassistent
 Från: Sensorgateway
 TNR: 071139
 Stund: 071139
-Ställe: Rörelsedetektor vid transformatorstationen
+Ställe: Rörelsedetektor vid transformatorstationen (34VCL3455876631)
 Styrka: -
 Sysselsättning: Sensor aktiverad
 Sagesman: Sensorgateway
@@ -24,7 +24,7 @@ Till: Stabsassistent
 Från: Sensorgateway
 TNR: 071958
 Stund: 071958
-Ställe: Kamera vid Kajen
+Ställe: Kamera vid Kajen (34VCL3492276481)
 Styrka: 1
 Sysselsättning: Sensor aktiverad
 Sagesman: Sensorgateway

@@ -30,7 +30,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 050049
 Stund: 050049
-Ställe: Huvudentrén
+Ställe: Huvudentrén (34VCL3470276669)
 Styrka: 1
 Slag: Cyklist
 Sysselsättning: Passerade utanför stängslet
@@ -44,7 +44,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 050212
 Stund: 050212
-Ställe: Huvudentrén
+Ställe: Huvudentrén (34VCL3470276669)
 Styrka: -
 Slag: Rutinpatrullering
 Sysselsättning: Inget avvikande att rapportera
@@ -58,7 +58,7 @@ Till: Stabsassistent
 Från: Vakt Ekberg
 TNR: 050308
 Stund: 050308
-Ställe: Parkeringen vid huvudbyggnaden
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
 Styrka: -
 Slag: Väderobservation
 Sysselsättning: Nedsatt sikt på grund av dimma
@@ -72,7 +72,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 050321
 Stund: 050321
-Ställe: Norra vägen
+Ställe: Norra vägen (34VCL3471276892)
 Styrka: 1
 Slag: Cyklist
 Sysselsättning: Rastade en stund i närheten
@@ -86,7 +86,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 050444
 Stund: 050444
-Ställe: Förrådsbyggnaden
+Ställe: Förrådsbyggnaden (34VCL3480676810)
 Styrka: 1
 Slag: Hundpromenerare
 Sysselsättning: Frågade om vägbeskrivning
@@ -100,7 +100,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 050458
 Stund: 050458
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: 1
 Slag: Postbil
 Sysselsättning: Vände och körde tillbaka samma väg
@@ -114,7 +114,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 050503
 Stund: 050503
-Ställe: Huvudentrén
+Ställe: Huvudentrén (34VCL3470276669)
 Styrka: 1
 Slag: Löpare
 Sysselsättning: Frågade om vägbeskrivning
@@ -128,7 +128,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 050924
 Stund: 050924
-Ställe: Skjutbanan
+Ställe: Skjutbanan (34VCL3471877014)
 Styrka: 1
 Slag: Traktor
 Sysselsättning: Passerade på allmän väg utan att stanna
@@ -142,7 +142,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 051013
 Stund: 051013
-Ställe: Norra vägen
+Ställe: Norra vägen (34VCL3471276892)
 Styrka: 6
 Slag: Fågelflock
 Sysselsättning: Betade en stund vid stängslet
@@ -156,7 +156,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 051028
 Stund: 051028
-Ställe: Bommen vid infarten
+Ställe: Bommen vid infarten (34VCL3452876732)
 Styrka: 6
 Slag: Fågelflock
 Sysselsättning: Betade en stund vid stängslet
@@ -170,7 +170,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 051053
 Stund: 051053
-Ställe: Parkeringen vid huvudbyggnaden
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
 Styrka: 1
 Slag: Hundpromenerare
 Sysselsättning: Frågade om vägbeskrivning
@@ -198,7 +198,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 051141
 Stund: 051141
-Ställe: Förrådsbyggnaden
+Ställe: Förrådsbyggnaden (34VCL3480676810)
 Styrka: 1
 Slag: Renhållningsfordon
 Sysselsättning: Levererade gods vid förrådet
@@ -212,7 +212,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 051232
 Stund: 051232
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: 1
 Slag: Postbil
 Sysselsättning: Stod kort stilla innan den körde vidare
@@ -226,7 +226,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 051240
 Stund: 051240
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Leveransbil
 Sysselsättning: Passerade på allmän väg utan att stanna
@@ -254,7 +254,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 051808
 Stund: 051808
-Ställe: Parkeringen vid huvudbyggnaden
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
 Styrka: 1
 Slag: Löpare
 Sysselsättning: Frågade om vägbeskrivning
@@ -282,7 +282,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 051849
 Stund: 051849
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: 1
 Slag: Renhållningsfordon
 Sysselsättning: Utförde planerat underhållsarbete
@@ -296,7 +296,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 051901
 Stund: 051901
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: -
 Slag: Väderobservation
 Sysselsättning: Nedsatt sikt på grund av dimma
@@ -324,7 +324,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 052026
 Stund: 052026
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: -
 Slag: Väderobservation
 Sysselsättning: Nedsatt sikt på grund av dimma
@@ -338,7 +338,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 052137
 Stund: 052137
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: 1
 Slag: Rådjur
 Sysselsättning: Rörde sig längs stängslet innan den försvann
@@ -352,7 +352,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 052156
 Stund: 052156
-Ställe: Östra grinden
+Ställe: Östra grinden (34VCL3489476739)
 Styrka: 1
 Slag: Postbil
 Sysselsättning: Levererade gods vid förrådet
@@ -366,7 +366,7 @@ Till: Stabsassistent
 Från: Vakt Ekberg
 TNR: 052220
 Stund: 052220
-Ställe: Huvudentrén
+Ställe: Huvudentrén (34VCL3470276669)
 Styrka: 1
 Slag: Fiskare
 Sysselsättning: Frågade om vägbeskrivning
@@ -395,7 +395,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 052325
 Stund: 052325
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: 1
 Slag: Grävling
 Sysselsättning: Betade en stund vid stängslet
@@ -409,7 +409,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 052344
 Stund: 052344
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Cyklist
 Sysselsättning: Passerade utanför stängslet

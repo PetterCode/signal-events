@@ -2,7 +2,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 060236
 Stund: 060236
-Ställe: Vaktkuren
+Ställe: Vaktkuren (34VCL3472076679)
 Styrka: 1
 Slag: Hundpromenerare
 Sysselsättning: Frågade om vägbeskrivning
@@ -16,7 +16,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 060347
 Stund: 060347
-Ställe: Huvudentrén
+Ställe: Huvudentrén (34VCL3470276669)
 Styrka: 1
 Slag: Person
 Sysselsättning: Observerade entrén och antecknade i ett block
@@ -44,7 +44,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 060408
 Stund: 060408
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: 1
 Slag: Fasan
 Sysselsättning: Sprang tvärs över vägen
@@ -58,7 +58,7 @@ Till: Stabsassistent
 Från: Vakt Ekberg
 TNR: 060411
 Stund: 060411
-Ställe: Vaktkuren
+Ställe: Vaktkuren (34VCL3472076679)
 Styrka: 1
 Slag: Fiskare
 Sysselsättning: Frågade om vägbeskrivning
@@ -86,7 +86,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 060453
 Stund: 060453
-Ställe: Västra infarten
+Ställe: Västra infarten (34VCL3451276744)
 Styrka: 1
 Slag: Brevbärare
 Sysselsättning: Frågade om vägbeskrivning
@@ -100,7 +100,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 060600
 Stund: 060600
-Ställe: Östra grinden
+Ställe: Östra grinden (34VCL3489476739)
 Styrka: 1
 Slag: Grävling
 Sysselsättning: Vilade i gräset nära förrådet
@@ -114,7 +114,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 060635
 Stund: 060635
-Ställe: Västra infarten
+Ställe: Västra infarten (34VCL3451276744)
 Styrka: 1
 Slag: Fasan
 Sysselsättning: Sprang tvärs över vägen
@@ -128,7 +128,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 060712
 Stund: 060712
-Ställe: Förrådsbyggnaden
+Ställe: Förrådsbyggnaden (34VCL3480676810)
 Styrka: 1
 Slag: Löpare
 Sysselsättning: Passerade utanför stängslet
@@ -170,7 +170,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 061010
 Stund: 061010
-Ställe: Bommen vid infarten
+Ställe: Bommen vid infarten (34VCL3452876732)
 Styrka: -
 Slag: Vindfälld gren
 Sysselsättning: Låg över gångvägen, forslades bort av personal
@@ -198,7 +198,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 061238
 Stund: 061238
-Ställe: Parkeringen vid huvudbyggnaden
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
 Styrka: 1
 Slag: Rådjur
 Sysselsättning: Passerade genom området och försvann in i skogen
@@ -226,7 +226,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 061722
 Stund: 061722
-Ställe: Parkeringen vid huvudbyggnaden
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
 Styrka: 1
 Slag: Hare
 Sysselsättning: Vilade i gräset nära förrådet
@@ -268,7 +268,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 061835
 Stund: 061835
-Ställe: Skjutbanan
+Ställe: Skjutbanan (34VCL3471877014)
 Styrka: 1
 Slag: Räv
 Sysselsättning: Sprang tvärs över vägen
@@ -282,7 +282,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 061855
 Stund: 061855
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: 1
 Slag: Brevbärare
 Sysselsättning: Frågade om vägbeskrivning
@@ -310,7 +310,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 061938
 Stund: 061938
-Ställe: Östra grinden
+Ställe: Östra grinden (34VCL3489476739)
 Styrka: 1
 Slag: Löpare
 Sysselsättning: Fortsatte vidare utan att stanna
@@ -324,7 +324,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 062113
 Stund: 062113
-Ställe: Vaktkuren
+Ställe: Vaktkuren (34VCL3472076679)
 Styrka: 1
 Slag: Rådjur
 Sysselsättning: Vilade i gräset nära förrådet
@@ -338,7 +338,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 062218
 Stund: 062218
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Fasan
 Sysselsättning: Betade en stund vid stängslet
@@ -352,7 +352,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 062233
 Stund: 062233
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: -
 Slag: Rutinpatrullering
 Sysselsättning: Inget avvikande att rapportera
@@ -380,7 +380,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 062249
 Stund: 062249
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: 1
 Slag: Servicebil
 Sysselsättning: Levererade gods vid förrådet
@@ -394,7 +394,7 @@ Till: Stabsassistent
 Från: Vakt Ekberg
 TNR: 062324
 Stund: 062324
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: 1
 Slag: Fasan
 Sysselsättning: Betade en stund vid stängslet

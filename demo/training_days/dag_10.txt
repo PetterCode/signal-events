@@ -16,7 +16,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 100143
 Stund: 100143
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: 1
 Slag: Ekorre
 Sysselsättning: Vilade i gräset nära förrådet
@@ -30,7 +30,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 100213
 Stund: 100213
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: 1
 Slag: Postbil
 Sysselsättning: Utförde planerat underhållsarbete
@@ -58,7 +58,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 100312
 Stund: 100312
-Ställe: Parkeringen vid huvudbyggnaden
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
 Styrka: -
 Slag: Rutinpatrullering
 Sysselsättning: Inget avvikande att rapportera
@@ -72,7 +72,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 100415
 Stund: 100415
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Grävling
 Sysselsättning: Vilade i gräset nära förrådet
@@ -101,7 +101,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 100611
 Stund: 100611
-Ställe: Skjutbanan
+Ställe: Skjutbanan (34VCL3471877014)
 Styrka: 1
 Slag: Katt
 Sysselsättning: Sprang tvärs över vägen
@@ -129,7 +129,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 100615
 Stund: 100615
-Ställe: Norra vägen
+Ställe: Norra vägen (34VCL3471276892)
 Styrka: 1
 Slag: Renhållningsfordon
 Sysselsättning: Passerade på allmän väg utan att stanna
@@ -157,7 +157,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 100721
 Stund: 100721
-Ställe: Parkeringen vid huvudbyggnaden
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
 Styrka: 1
 Slag: Postbil
 Sysselsättning: Passerade på allmän väg utan att stanna
@@ -171,7 +171,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 100914
 Stund: 100914
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: 1
 Slag: Hare
 Sysselsättning: Betade en stund vid stängslet
@@ -199,7 +199,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 101144
 Stund: 101144
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: 1
 Slag: Katt
 Sysselsättning: Passerade genom området och försvann in i skogen
@@ -213,7 +213,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 101156
 Stund: 101156
-Ställe: Västra infarten
+Ställe: Västra infarten (34VCL3451276744)
 Styrka: -
 Slag: Rutinpatrullering
 Sysselsättning: Inget avvikande att rapportera
@@ -227,7 +227,7 @@ Till: Stabsassistent
 Från: Vakt Ekberg
 TNR: 101208
 Stund: 101208
-Ställe: Förrådsbyggnaden
+Ställe: Förrådsbyggnaden (34VCL3480676810)
 Styrka: -
 Slag: Skadegörelse
 Sysselsättning: Uppbrutet lås vid förrådets bakdörr upptäckt
@@ -241,7 +241,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 101224
 Stund: 101224
-Ställe: Skjutbanan
+Ställe: Skjutbanan (34VCL3471877014)
 Styrka: 1
 Slag: Sopbil
 Sysselsättning: Stod kort stilla innan den körde vidare
@@ -255,7 +255,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 101224
 Stund: 101224
-Ställe: Bommen vid infarten
+Ställe: Bommen vid infarten (34VCL3452876732)
 Styrka: 1
 Slag: Traktor
 Sysselsättning: Utförde planerat underhållsarbete
@@ -269,7 +269,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 101453
 Stund: 101453
-Ställe: Norra vägen
+Ställe: Norra vägen (34VCL3471276892)
 Styrka: 1
 Slag: Besiktningsbil
 Sysselsättning: Utförde planerat underhållsarbete
@@ -297,7 +297,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 101544
 Stund: 101544
-Ställe: Vaktkuren
+Ställe: Vaktkuren (34VCL3472076679)
 Styrka: 1
 Slag: Leveransbil
 Sysselsättning: Levererade gods vid förrådet
@@ -311,7 +311,7 @@ Till: Stabsassistent
 Från: Vakt Ekberg
 TNR: 101729
 Stund: 101729
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: 1
 Slag: Fiskare
 Sysselsättning: Passerade utanför stängslet
@@ -325,7 +325,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 101747
 Stund: 101747
-Ställe: Huvudentrén
+Ställe: Huvudentrén (34VCL3470276669)
 Styrka: 1
 Slag: Servicebil
 Sysselsättning: Stod kort stilla innan den körde vidare
@@ -353,7 +353,7 @@ Till: Stabsassistent
 Från: Vakt Ekberg
 TNR: 102037
 Stund: 102037
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 14
 Slag: Skolklass
 Sysselsättning: Passerade på guidad rundtur utanför stängslet
@@ -367,7 +367,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 102140
 Stund: 102140
-Ställe: Östra grinden
+Ställe: Östra grinden (34VCL3489476739)
 Styrka: 1
 Slag: Postbil
 Sysselsättning: Levererade gods vid förrådet
@@ -381,7 +381,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 102239
 Stund: 102239
-Ställe: Skjutbanan
+Ställe: Skjutbanan (34VCL3471877014)
 Styrka: 1
 Slag: Fotgängare
 Sysselsättning: Passerade utanför stängslet
@@ -409,7 +409,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 102306
 Stund: 102306
-Ställe: Skogsbrynet vid förrådet
+Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
 Styrka: -
 Slag: Rutinpatrullering
 Sysselsättning: Inget avvikande att rapportera

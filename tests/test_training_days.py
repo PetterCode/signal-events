@@ -193,6 +193,46 @@ def test_sensor_tnrs_never_collide_with_that_day_own_human_report_tnrs():
         assert not (human_tnrs & sensor_tnrs), f"day {day}: TNR collision {human_tnrs & sensor_tnrs}"
 
 
+def test_most_but_not_all_human_reported_events_get_a_position():
+    """Most (not all) of the human-reported story -- noise and signal
+    events alike -- should carry a real MGRS grid reference in their
+    Ställe field (see demo/generate_training_days.py's PLACE_COORDS /
+    _place_with_position), auto-extracted into lat/lon through the exact
+    same path a real guard's report would use -- not every single one,
+    since a guard doesn't always bother noting a grid reference."""
+    with db.get_connection() as conn:
+        positioned = 0
+        total = 0
+        for day in range(1, 11):
+            text = (TRAINING_DAYS_DIR / f"dag_{day:02d}.txt").read_text(encoding="utf-8")
+            ids = importer.import_text(conn, text, filename=f"dag_{day:02d}.txt")
+            for event_id in ids:
+                event = db.get_event(conn, event_id)
+                total += 1
+                if event["lat"] is not None and event["lon"] is not None:
+                    positioned += 1
+
+    assert total == 300
+    assert positioned < total, "expected at least one human-reported event without a position"
+    ratio = positioned / total
+    assert 0.5 < ratio < 0.95, f"expected 'most, not all' positioned, got {positioned}/{total}"
+
+
+def test_all_sensor_events_get_a_position():
+    """Unlike human reports, every sensor event should have a position --
+    an automated gateway logs its own fixed installation location every
+    time, unlike a person who might not bother."""
+    with db.get_connection() as conn:
+        for day in range(1, 11):
+            text = (TRAINING_DAYS_DIR / f"dag_{day:02d}_sensor.txt").read_text(encoding="utf-8")
+            ids = importer.import_text(conn, text, filename=f"dag_{day:02d}_sensor.txt")
+            assert len(ids) == 3
+            for event_id in ids:
+                event = db.get_event(conn, event_id)
+                assert event["lat"] is not None, f"day {day}: sensor event {event_id} missing lat"
+                assert event["lon"] is not None, f"day {day}: sensor event {event_id} missing lon"
+
+
 def test_event_images_json_includes_a_camera_capture_image_for_every_day():
     images_path = TRAINING_DAYS_DIR / "event_images.json"
     data = json.loads(images_path.read_text(encoding="utf-8"))

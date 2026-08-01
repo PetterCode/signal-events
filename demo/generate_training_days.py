@@ -43,15 +43,114 @@ from __future__ import annotations
 import json
 import random
 import sys
+import warnings
+import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import mgrs as _mgrs_lib
 
 from signal_events.analysis import _DESC_SIMILARITY_THRESHOLD, _jaccard, _tokenize
 
 OUT_DIR = Path(__file__).resolve().parent / "training_days"
 SEED = 20260725
 EVENTS_PER_DAY = 30
+
+# Fixed (lat, lon) for every named post around the scenario's fictional
+# compound -- centred on demo_map._DEMO_CENTER_LAT/LON (the same point the
+# cartoon dummy basemap's river/road are drawn relative to, see
+# signal_events/demo_map.py), so imported events land right on top of the
+# illustrated terrain rather than off to one side of it. Coordinates
+# themselves aren't meant to depict a real place -- see demo_map.py's
+# docstring for why the map itself is a cartoon rather than a real
+# provider's imagery.
+#
+# Two places are deliberately left out ("Sjön utanför området" -- "the
+# lake outside the area", too diffuse to give one grid reference for; and
+# "Gångstigen längs stängslet" -- "the path along the fence", not really
+# a single point either) so not every place in the scenario has a
+# coordinate to begin with -- see _place_with_position below for the
+# further per-event chance of a position being included even when one
+# exists, mirroring a guard not always bothering to note a grid
+# reference.
+PLACE_COORDS: dict[str, tuple[float, float]] = {
+    "Norra vägen": (59.2985, 18.0973),
+    "Huvudentrén": (59.2965, 18.0973),
+    "Vaktkuren": (59.2966, 18.0976),
+    "Parkeringen vid huvudbyggnaden": (59.2968, 18.0969),
+    "Förrådsbyggnaden": (59.2978, 18.0990),
+    "Östra grinden": (59.2972, 18.1006),
+    "Västra infarten": (59.2971, 18.0939),
+    "Skogsbrynet vid förrådet": (59.2981, 18.0996),
+    "Kajen": (59.2950, 18.1012),
+    "Bommen vid infarten": (59.2970, 18.0942),
+    "Skjutbanan": (59.2996, 18.0973),
+    "Bortre parkeringen": (59.2959, 18.1001),
+    "Södra hörnet av stängslet": (59.2955, 18.0975),
+    "Vid transformatorstationen": (59.2960, 18.0949),
+    "Norra skogsbrynet": (59.2989, 18.0967),
+    "Trådlarm vid Östra grinden": (59.2973, 18.1004),
+    "Trådlarm vid Västra infarten": (59.2970, 18.0940),
+    "Trådlarm bakom förrådet": (59.2979, 18.0993),
+    "Trådlarm vid Bommen vid infarten": (59.2969, 18.0943),
+    "Rörelsedetektor vid Skogsbrynet vid förrådet": (59.2982, 18.0997),
+    "Rörelsedetektor vid Bortre parkeringen": (59.2958, 18.1000),
+    "Rörelsedetektor vid transformatorstationen": (59.2961, 18.0948),
+    "Rörelsedetektor vid Kajen": (59.2951, 18.1011),
+    "Kamera vid Huvudentrén": (59.2964, 18.0974),
+    "Kamera vid Östra grinden": (59.2972, 18.1005),
+    "Kamera vid Kajen": (59.2949, 18.1013),
+    "Kamera vid Vaktkuren": (59.2967, 18.0975),
+}
+
+# Human-reported events (noise + signal) get a position roughly this
+# often even when their place has a known coordinate -- not every guard
+# bothers writing a grid reference every time. Sensor events always get
+# one (see generate_sensor_day/_place_with_position) since an automated
+# gateway logs its own fixed installation position every time, unlike a
+# person.
+_POSITION_INCLUDE_RATE = 0.8
+
+_MGRS = _mgrs_lib.MGRS()
+
+
+def _mgrs_token(lat: float, lon: float) -> str:
+    with warnings.catch_warnings():
+        # Same cosmetic ctypes "Latitude Warning" signal_events/coordinates.py
+        # already silences on the decode side -- harmless, not a sign the
+        # coordinate is wrong.
+        warnings.simplefilter("ignore")
+        return _MGRS.toMGRS(lat, lon)
+
+
+def _position_roll(day: int, tnr: str, place: str) -> float:
+    """A deterministic pseudo-random value in [0, 1) for the position-
+    inclusion decision below, derived independently of the shared per-day
+    `random.Random` (rather than drawing from it) -- so whether a given
+    event gets a position never shifts the sequence of random draws
+    everything else in this file depends on (report times, which guard
+    reported it, noise-event content), which several existing tests treat
+    as pinned-down/deterministic output."""
+    digest = zlib.crc32(f"{day}:{tnr}:{place}".encode("utf-8"))
+    return digest / 0xFFFFFFFF
+
+
+def _place_with_position(day: int, tnr: str, place: str, *, always: bool = False) -> str:
+    """Appends a real MGRS grid reference for `place` to its own text
+    (e.g. "Kajen (34VCL...)") when a coordinate is known for it and this
+    event happens to get one -- the exact same intake path a real guard's
+    report would use (signal_events.coordinates.extract_mgrs_latlon reads
+    the Ställe field for a token like this at import time), not a
+    separate demo-only mechanism. Returns `place` unchanged when there's
+    no coordinate for it, or (for non-`always` calls) when the per-event
+    roll skips it."""
+    coords = PLACE_COORDS.get(place)
+    if coords is None:
+        return place
+    if not always and _position_roll(day, tnr, place) >= _POSITION_INCLUDE_RATE:
+        return place
+    return f"{place} ({_mgrs_token(*coords)})"
 
 GUARDS = [
     "Vakt Andersson", "Vakt Lindqvist", "Vakt Berg", "Vakt Nilsson",
@@ -356,7 +455,8 @@ def generate_day(
     images = []
     for tnr, event in timed:
         reporter = rng.choice(GUARDS)
-        blocks.append(_render_block(day, reporter, tnr, event))
+        positioned = {**event, "place": _place_with_position(day, tnr, event["place"])}
+        blocks.append(_render_block(day, reporter, tnr, positioned))
         if event.get("image"):
             images.append({"tnr": tnr, "image": event["image"]})
 
@@ -452,7 +552,8 @@ def generate_sensor_day(day: int) -> tuple[str, list[dict]]:
     images = []
     for kind, event in events_by_kind.items():
         tnr = f"{day:02d}{SENSOR_TNR_SUFFIX[kind]}"
-        blocks.append(_render_block(day, SENSOR_GATEWAY, tnr, event))
+        positioned = {**event, "place": _place_with_position(day, tnr, event["place"], always=True)}
+        blocks.append(_render_block(day, SENSOR_GATEWAY, tnr, positioned))
         if kind == "camera":
             images.append({"tnr": tnr, "image": camera_image})
 

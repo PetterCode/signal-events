@@ -2,7 +2,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 070017
 Stund: 070017
-Ställe: Vaktkuren
+Ställe: Vaktkuren (34VCL3472076679)
 Styrka: 6
 Slag: Fågelflock
 Sysselsättning: Betade en stund vid stängslet
@@ -16,7 +16,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 070029
 Stund: 070029
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Cyklist
 Sysselsättning: Frågade om vägbeskrivning
@@ -30,7 +30,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 070031
 Stund: 070031
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: 1
 Slag: Brevbärare
 Sysselsättning: Fortsatte vidare utan att stanna
@@ -44,7 +44,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 070203
 Stund: 070203
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Katt
 Sysselsättning: Rörde sig längs stängslet innan den försvann
@@ -58,7 +58,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 070407
 Stund: 070407
-Ställe: Vaktkuren
+Ställe: Vaktkuren (34VCL3472076679)
 Styrka: 1
 Slag: Brevbärare
 Sysselsättning: Rastade en stund i närheten
@@ -72,7 +72,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 070504
 Stund: 070504
-Ställe: Vaktkuren
+Ställe: Vaktkuren (34VCL3472076679)
 Styrka: 1
 Slag: Grävling
 Sysselsättning: Vilade i gräset nära förrådet
@@ -86,7 +86,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 070625
 Stund: 070625
-Ställe: Norra vägen
+Ställe: Norra vägen (34VCL3471276892)
 Styrka: 1
 Slag: Brevbärare
 Sysselsättning: Rastade en stund i närheten
@@ -100,7 +100,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 070626
 Stund: 070626
-Ställe: Parkeringen vid huvudbyggnaden
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
 Styrka: 1
 Slag: Ekorre
 Sysselsättning: Vilade i gräset nära förrådet
@@ -114,7 +114,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 070627
 Stund: 070627
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Beväpnad person
 Sysselsättning: Siktades kortvarigt innan personen försvann in i skogen
@@ -128,7 +128,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 070746
 Stund: 070746
-Ställe: Bommen vid infarten
+Ställe: Bommen vid infarten (34VCL3452876732)
 Styrka: 1
 Slag: Traktor
 Sysselsättning: Stod kort stilla innan den körde vidare
@@ -156,7 +156,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 070858
 Stund: 070858
-Ställe: Norra vägen
+Ställe: Norra vägen (34VCL3471276892)
 Styrka: 1
 Slag: Cyklist
 Sysselsättning: Rastade en stund i närheten
@@ -170,7 +170,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 070935
 Stund: 070935
-Ställe: Förrådsbyggnaden
+Ställe: Förrådsbyggnaden (34VCL3480676810)
 Styrka: 6
 Slag: Fågelflock
 Sysselsättning: Betade en stund vid stängslet
@@ -184,7 +184,7 @@ Till: Stabsassistent
 Från: Vakt Andersson
 TNR: 070952
 Stund: 070952
-Ställe: Förrådsbyggnaden
+Ställe: Förrådsbyggnaden (34VCL3480676810)
 Styrka: 1
 Slag: Löpare
 Sysselsättning: Frågade om vägbeskrivning
@@ -198,7 +198,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 071022
 Stund: 071022
-Ställe: Östra grinden
+Ställe: Östra grinden (34VCL3489476739)
 Styrka: 1
 Slag: Leveransbil
 Sysselsättning: Vände och körde tillbaka samma väg
@@ -226,7 +226,7 @@ Till: Stabsassistent
 Från: Vakt Holm
 TNR: 071117
 Stund: 071117
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Cyklist
 Sysselsättning: Frågade om vägbeskrivning
@@ -240,7 +240,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 071400
 Stund: 071400
-Ställe: Förrådsbyggnaden
+Ställe: Förrådsbyggnaden (34VCL3480676810)
 Styrka: 14
 Slag: Skolklass
 Sysselsättning: Passerade på guidad rundtur utanför stängslet
@@ -254,7 +254,7 @@ Till: Stabsassistent
 Från: Vakt Ekberg
 TNR: 071624
 Stund: 071624
-Ställe: Östra grinden
+Ställe: Östra grinden (34VCL3489476739)
 Styrka: 1
 Slag: Fasan
 Sysselsättning: Vilade i gräset nära förrådet
@@ -268,7 +268,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 071756
 Stund: 071756
-Ställe: Vaktkuren
+Ställe: Vaktkuren (34VCL3472076679)
 Styrka: 1
 Slag: Postbil
 Sysselsättning: Vände och körde tillbaka samma väg
@@ -282,7 +282,7 @@ Till: Stabsassistent
 Från: Vakt Berg
 TNR: 071836
 Stund: 071836
-Ställe: Östra grinden
+Ställe: Östra grinden (34VCL3489476739)
 Styrka: 1
 Slag: Cyklist
 Sysselsättning: Rastade en stund i närheten
@@ -324,7 +324,7 @@ Till: Stabsassistent
 Från: Vakt Nilsson
 TNR: 071957
 Stund: 071957
-Ställe: Kajen
+Ställe: Kajen (34VCL3491776492)
 Styrka: 1
 Slag: Besiktningsbil
 Sysselsättning: Stod kort stilla innan den körde vidare
@@ -338,7 +338,7 @@ Till: Stabsassistent
 Från: Vakt Lindqvist
 TNR: 072023
 Stund: 072023
-Ställe: Bortre parkeringen
+Ställe: Bortre parkeringen (34VCL3485976595)
 Styrka: 1
 Slag: Fotgängare
 Sysselsättning: Fortsatte vidare utan att stanna
@@ -394,7 +394,7 @@ Till: Stabsassistent
 Från: Vakt Karlsson
 TNR: 072301
 Stund: 072301
-Ställe: Norra vägen
+Ställe: Norra vägen (34VCL3471276892)
 Styrka: -
 Slag: Rutinpatrullering
 Sysselsättning: Inget avvikande att rapportera
@@ -408,7 +408,7 @@ Till: Stabsassistent
 Från: Vakt Ström
 TNR: 072347
 Stund: 072347
-Ställe: Östra grinden
+Ställe: Östra grinden (34VCL3489476739)
 Styrka: 1
 Slag: Fiskare
 Sysselsättning: Rastade en stund i närheten
