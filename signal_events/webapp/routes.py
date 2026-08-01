@@ -993,10 +993,12 @@ def demo_sensor_toggle():
 @bp.route("/events/import/demo/clear", methods=["POST"])
 def demo_clear():
     with db.get_connection() as conn:
-        message_ids = db.clear_demo_events(conn)
+        message_ids, adjacent_attachment_paths = db.clear_demo_events(conn)
 
     for message_id in message_ids:
         shutil.rmtree(config.ATTACHMENTS_DIR / str(message_id), ignore_errors=True)
+    for path in adjacent_attachment_paths:
+        Path(path).unlink(missing_ok=True)
 
     if message_ids:
         flash(f"Demohändelser borttagna ({len(message_ids)} st).")

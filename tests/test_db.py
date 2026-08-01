@@ -415,9 +415,10 @@ def test_clear_demo_events_removes_only_demo_tagged_data():
         )
         real_event_id = db.insert_event(conn, message_id=real_message_id, fields={"place": "Verklig"})
 
-        removed_ids = db.clear_demo_events(conn)
+        removed_ids, removed_attachment_paths = db.clear_demo_events(conn)
 
         assert removed_ids == [demo_message_id]
+        assert removed_attachment_paths == []
         assert db.get_event(conn, demo_event_id) is None
         assert db.get_message(conn, demo_message_id) is None
         assert db.list_attachments_for_message(conn, demo_message_id) == []
@@ -426,9 +427,43 @@ def test_clear_demo_events_removes_only_demo_tagged_data():
         assert db.has_demo_events(conn) is False
 
 
-def test_clear_demo_events_returns_empty_list_when_nothing_to_clear():
+def test_clear_demo_events_returns_empty_lists_when_nothing_to_clear():
     with db.get_connection() as conn:
-        assert db.clear_demo_events(conn) == []
+        assert db.clear_demo_events(conn) == ([], [])
+
+
+def test_clear_demo_events_also_removes_demo_seeded_adjacent_reports():
+    """Regression: demo/training-day import also seeds adjacent-unit
+    status reports (2.Kompani/3.Kompani) with a negative signal_timestamp
+    (routes.py's _SYNTHETIC_TIMESTAMP_OFFSET convention) -- these used to
+    survive "clear demo data" entirely, leaving the header badge and
+    Sammanställd hotbedömning's adjacent-unit card showing stale demo
+    status even after every demo event was gone."""
+    with db.get_connection() as conn:
+        demo_adjacent_id = db.insert_adjacent_report(
+            conn, signal_timestamp=-1234, sender_number=None,
+            sender_name="2.Kompani", unit_name="2.Kompani", body="Demo status",
+        )
+        db.insert_adjacent_report_attachment(
+            conn, adjacent_report_id=demo_adjacent_id,
+            file_path="/tmp/demo_adjacent.jpg", content_type="image/jpeg",
+        )
+        real_adjacent_id = db.insert_adjacent_report(
+            conn, signal_timestamp=1700000000000, sender_number="+15551234567",
+            sender_name="3.Kompani", unit_name="3.Kompani", body="Verklig status",
+        )
+
+        removed_ids, removed_attachment_paths = db.clear_demo_events(conn)
+
+        assert removed_ids == []
+        assert removed_attachment_paths == ["/tmp/demo_adjacent.jpg"]
+        assert db.list_attachments_for_adjacent_report(conn, demo_adjacent_id) == []
+        assert conn.execute(
+            "SELECT 1 FROM adjacent_reports WHERE id = ?", (demo_adjacent_id,)
+        ).fetchone() is None
+        assert conn.execute(
+            "SELECT 1 FROM adjacent_reports WHERE id = ?", (real_adjacent_id,)
+        ).fetchone() is not None
 
 
 def test_threat_override_defaults_to_none():

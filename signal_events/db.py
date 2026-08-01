@@ -553,26 +553,55 @@ def has_demo_events(conn: sqlite3.Connection) -> bool:
     return row is not None
 
 
-def clear_demo_events(conn: sqlite3.Connection) -> list[int]:
-    """Removes only the events, messages, and attachments that came from
-    the bundled demo/training-day import (see has_demo_events) -- every
-    other stored event, the unit name, the adjacent-unit roster, and
-    received adjacent-unit status reports are left untouched. Returns the
-    removed message ids so the caller can also delete their attachment
-    files on disk (ATTACHMENTS_DIR/<message_id>/...), which aren't
-    tracked by SQLite itself."""
+def clear_demo_events(conn: sqlite3.Connection) -> tuple[list[int], list[str]]:
+    """Removes the events, messages, and attachments that came from the
+    bundled demo/training-day import (see has_demo_events), *and* the
+    demo-seeded adjacent-unit status reports (2.Kompani/3.Kompani) that
+    same import creates -- otherwise the header badge and Sammanställd
+    hotbedömning's "Status från angränsande enheter" card kept showing
+    stale demo data even after "clear demo data" removed everything else.
+    A *genuinely received* adjacent report (signal_client.py, always a
+    real positive Signal timestamp) is never touched -- only rows with a
+    negative signal_timestamp are, which is exactly and only how this
+    import (and demo/seed_demo.py) mark a report as synthetic rather than
+    Signal-received (see _SYNTHETIC_TIMESTAMP_OFFSET in routes.py). The
+    real adjacent-unit roster (adjacent_units) and unit name are never
+    touched either way.
+
+    Returns (removed_message_ids, removed_adjacent_attachment_paths) so
+    the caller can also delete the corresponding files on disk
+    (ATTACHMENTS_DIR/<message_id>/... and the adjacent-report attachment
+    paths), neither of which is tracked by SQLite itself."""
     rows = conn.execute(
         """SELECT id FROM messages
            WHERE raw_json LIKE '%"filename": "dag_%.txt"%'"""
     ).fetchall()
     message_ids = [row["id"] for row in rows]
-    if not message_ids:
-        return []
-    placeholders = ",".join("?" for _ in message_ids)
-    conn.execute(f"DELETE FROM attachments WHERE message_id IN ({placeholders})", message_ids)
-    conn.execute(f"DELETE FROM events WHERE message_id IN ({placeholders})", message_ids)
-    conn.execute(f"DELETE FROM messages WHERE id IN ({placeholders})", message_ids)
-    return message_ids
+    if message_ids:
+        placeholders = ",".join("?" for _ in message_ids)
+        conn.execute(f"DELETE FROM attachments WHERE message_id IN ({placeholders})", message_ids)
+        conn.execute(f"DELETE FROM events WHERE message_id IN ({placeholders})", message_ids)
+        conn.execute(f"DELETE FROM messages WHERE id IN ({placeholders})", message_ids)
+
+    adjacent_rows = conn.execute(
+        "SELECT id FROM adjacent_reports WHERE signal_timestamp < 0"
+    ).fetchall()
+    adjacent_ids = [row["id"] for row in adjacent_rows]
+    attachment_paths: list[str] = []
+    if adjacent_ids:
+        placeholders = ",".join("?" for _ in adjacent_ids)
+        attachment_rows = conn.execute(
+            f"SELECT file_path FROM adjacent_report_attachments WHERE adjacent_report_id IN ({placeholders})",
+            adjacent_ids,
+        ).fetchall()
+        attachment_paths = [row["file_path"] for row in attachment_rows]
+        conn.execute(
+            f"DELETE FROM adjacent_report_attachments WHERE adjacent_report_id IN ({placeholders})",
+            adjacent_ids,
+        )
+        conn.execute(f"DELETE FROM adjacent_reports WHERE id IN ({placeholders})", adjacent_ids)
+
+    return message_ids, attachment_paths
 
 
 def get_setting(conn: sqlite3.Connection, key: str, default: Optional[str] = None) -> Optional[str]:
