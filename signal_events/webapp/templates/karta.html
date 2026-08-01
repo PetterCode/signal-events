@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}Kart-vy{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+{% endblock %}
+{% block content %}
+  <h1>Kart-vy</h1>
+  <div class="filters">
+    Tidsperiod:
+    {% for key, label in [("24h", "24 tim"), ("7d", "7 dagar"), ("30d", "30 dagar"), ("all", "Alla")] %}
+      <a href="{{ url_for('events.map_view', since=key, adjacent='1' if show_adjacent else '0', events='1' if show_events else '0') }}"
+         style="{{ 'font-weight:bold' if since == key else '' }}">{{ label }}</a>
+    {% endfor %}
+    &nbsp;|&nbsp;
+    {% if show_adjacent %}
+      <a href="{{ url_for('events.map_view', since=since, adjacent='0', events='1' if show_events else '0') }}">Dölj händelser från angränsande enheter</a>
+    {% else %}
+      <a href="{{ url_for('events.map_view', since=since, adjacent='1', events='1' if show_events else '0') }}">Visa händelser från angränsande enheter</a>
+    {% endif %}
+    &nbsp;|&nbsp;
+    {% if show_events %}
+      <a href="{{ url_for('events.map_view', since=since, adjacent='1' if show_adjacent else '0', events='0') }}">Dölj alla händelser</a>
+    {% else %}
+      <a href="{{ url_for('events.map_view', since=since, adjacent='1' if show_adjacent else '0', events='1') }}">Visa alla händelser</a>
+    {% endif %}
+  </div>
+  <div class="card">
+    {% if markers %}
+      <p class="map-hint">
+        {{ markers|length }} händelse{{ "r" if markers|length != 1 else "" }} med känd position.
+        {% if show_events %}
+          Klicka på en markör för att öppna händelsen.
+          {% if show_adjacent and markers|selectattr("source_unit")|list %}
+            Nålar är denna enhets egna händelser, blå prickar är mottagna
+            från angränsande enheter.
+          {% endif %}
+        {% else %}
+          Dolda &mdash; klicka "Visa alla händelser" ovan för att se dem.
+        {% endif %}
+      </p>
+      <div class="actions">
+        <button type="button" id="map-fullscreen-btn" class="btn-secondary">Helskärm</button>
+      </div>
+      <div id="events-map" class="map-container map-container-large"></div>
+    {% elif map_has_center %}
+      <p class="map-hint">
+        Inga händelser med känd position under vald tidsperiod. Kartan
+        visar det cachade området runt kartcentrum (se Inställningar).
+      </p>
+      <div class="actions">
+        <button type="button" id="map-fullscreen-btn" class="btn-secondary">Helskärm</button>
+      </div>
+      <div id="events-map" class="map-container map-container-large"></div>
+    {% else %}
+      <p>Inga händelser med känd position under vald tidsperiod, och inget
+      kartcentrum är satt. Position sätts automatiskt när en rapport
+      innehåller en koordinat (MGRS, decimalgrader, grader/minuter/sekunder
+      eller grader/decimalminuter, t.ex. i fältet "Ställe"), eller
+      manuellt genom att klicka i kartan på en händelses egen sida -- sätt
+      gärna ett kartcentrum på Inställningar först så kartrutorna kan
+      laddas ner.</p>
+    {% endif %}
+  </div>
+{% endblock %}
+{% block scripts %}
+  {% if markers or map_has_center %}
+    <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+    <script>
+      (function () {
+        var markers = {{ markers|tojson }};
+        var maxZoom = {{ map_max_zoom }};
+        var minZoom = {{ map_min_zoom }};
+        var hasCenter = {{ "true" if map_has_center else "false" }};
+        var showEvents = {{ "true" if show_events else "false" }};
+        var centerLat = {{ map_fallback_lat }};
+        var centerLon = {{ map_fallback_lon }};
+        var map = L.map("events-map", { minZoom: minZoom });
+        L.tileLayer("/tiles/{z}/{x}/{y}.png", {
+          minZoom: minZoom,
+          maxZoom: maxZoom,
+          attribution: "Kartkälla: se Inställningar &rarr; Kartleverantör",
+        }).addTo(map);
+
+        // Remembers the last pan/zoom across navigating away and back --
+        // a per-browser viewport preference, not app data, so
+        // localStorage rather than the database. Restored below in
+        // place of the usual fit-to-markers/Kartcentrum view whenever a
+        // saved one exists; kept up to date on every "moveend" further
+        // down.
+        var VIEW_STORAGE_KEY = "signal-events:karta:view";
+        function loadSavedView() {
+          try {
+            var raw = localStorage.getItem(VIEW_STORAGE_KEY);
+            if (!raw) return null;
+            var parsed = JSON.parse(raw);
+            if (typeof parsed.lat === "number" && typeof parsed.lng === "number"
+                && typeof parsed.zoom === "number") {
+              return parsed;
+            }
+          } catch (e) {}
+          return null;
+        }
+        function saveCurrentView() {
+          try {
+            var center = map.getCenter();
+            localStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify({
+              lat: center.lat, lng: center.lng, zoom: map.getZoom(),
+            }));
+          } catch (e) {}
+        }
+        var savedView = loadSavedView();
+
+        var group = L.featureGroup();     // everything shown on the map
+        var fitGroup = L.featureGroup();  // only points known to have cached tiles -- used to pick the initial view, so one distant marker can't drag the whole map onto ground with nothing cached
+        if (hasCenter) {
+          var centerMarker = L.circleMarker([centerLat, centerLon], {
+            radius: 9, color: "#c0392b", weight: 2, fillColor: "#e74c3c", fillOpacity: 0.85,
+          }).bindPopup("Kartcentrum (Inställningar)");
+          centerMarker.addTo(group);
+          centerMarker.addTo(fitGroup);
+        }
+        if (markers.length && showEvents) {
+          markers.forEach(function (m) {
+            var label = m.tnr + (m.object ? " &mdash; " + m.object : "")
+              + (m.place ? "<br>" + m.place : "")
+              + (m.source_unit ? "<br>Från: " + m.source_unit : "");
+            // Adjacent-unit events get a distinct dot instead of this
+            // unit's own pin, so the two are told apart at a glance.
+            var marker = m.source_unit
+              ? L.circleMarker([m.lat, m.lon], {
+                  radius: 7, color: "#1f5c8a", weight: 2, fillColor: "#4a90d9", fillOpacity: 0.85,
+                })
+              : L.marker([m.lat, m.lon]);
+            marker.bindPopup(label + '<br><a href="' + m.url + '">Öppna händelse</a>');
+            marker.addTo(group);
+            // With no Kartcentrum at all there's no cache-scoping info to
+            // go on, so every marker is still a fit candidate -- but once
+            // a center is set, only markers actually inside the cached
+            // area should be allowed to steer the initial view; an
+            // out-of-cache one stays on the map (reachable by panning)
+            // without dragging the fit toward its own uncached ground.
+            if (!hasCenter || m.in_cache) {
+              marker.addTo(fitGroup);
+            }
+          });
+        }
+        group.addTo(map);
+
+        if (savedView) {
+          // A previous visit's pan/zoom always wins over the
+          // fit-to-markers/Kartcentrum default -- that's the whole
+          // point of remembering it.
+          map.setView([savedView.lat, savedView.lng], savedView.zoom);
+        } else if (markers.length && showEvents) {
+          var bounds = fitGroup.getBounds().pad(0.2);
+          if (map.getBoundsZoom(bounds) < minZoom) {
+            map.setView(hasCenter ? [centerLat, centerLon] : bounds.getCenter(), minZoom);
+          } else {
+            map.fitBounds(bounds, { maxZoom: maxZoom });
+          }
+        } else {
+          // "Dölj alla händelser" is on, or there's nothing positioned
+          // to show anyway -- either way there's no useful bounds to
+          // fit to, so just center on Kartcentrum (or the app-wide
+          // fallback) at a reasonable overview zoom.
+          map.setView([centerLat, centerLon], hasCenter ? 10 : 5);
+        }
+
+        var mapEl = document.getElementById("events-map");
+
+        // Crosshair fixed at the center of the map viewport (not tied to
+        // any lat/lon -- a plain overlay element, not a Leaflet marker,
+        // so it stays put through every pan/zoom) plus a small box
+        // showing the position it's pointing at, updated live.
+        var crosshair = document.createElement("div");
+        crosshair.className = "map-crosshair";
+        crosshair.innerHTML =
+          '<svg width="28" height="28" viewBox="0 0 28 28">' +
+          '<circle cx="14" cy="14" r="7" fill="none" stroke="#e63946" stroke-width="1.5"/>' +
+          '<line x1="14" y1="0" x2="14" y2="8" stroke="#e63946" stroke-width="1.5"/>' +
+          '<line x1="14" y1="20" x2="14" y2="28" stroke="#e63946" stroke-width="1.5"/>' +
+          '<line x1="0" y1="14" x2="8" y2="14" stroke="#e63946" stroke-width="1.5"/>' +
+          '<line x1="20" y1="14" x2="28" y2="14" stroke="#e63946" stroke-width="1.5"/>' +
+          "</svg>";
+        mapEl.appendChild(crosshair);
+
+        var positionBox = document.createElement("div");
+        positionBox.className = "map-position-box";
+        mapEl.appendChild(positionBox);
+
+        var lastMgrsText = "…";
+        function renderPositionBox(lat, lon, mgrsText) {
+          positionBox.innerHTML = lat.toFixed(5) + ", " + lon.toFixed(5) + "<br>MGRS: " + mgrsText;
+        }
+        function refreshPositionBoxMgrs() {
+          var center = map.getCenter();
+          lastMgrsText = "…";
+          renderPositionBox(center.lat, center.lng, lastMgrsText);
+          fetch("/karta/mgrs?lat=" + center.lat + "&lon=" + center.lng)
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+              if (data.mgrs) {
+                lastMgrsText = data.mgrs;
+                renderPositionBox(center.lat, center.lng, lastMgrsText);
+              }
+            })
+            .catch(function () {});
+        }
+        map.on("move", function () {
+          // Decimal degrees update on every frame of the drag (cheap,
+          // purely client-side); MGRS only once the pan/zoom settles
+          // (moveend below), so dragging doesn't spam the conversion
+          // endpoint with a request per frame -- it just keeps showing
+          // the last known MGRS value until the new one arrives.
+          var center = map.getCenter();
+          renderPositionBox(center.lat, center.lng, lastMgrsText);
+        });
+        map.on("moveend", refreshPositionBoxMgrs);
+        map.on("moveend", saveCurrentView);
+        refreshPositionBoxMgrs();
+
+        var fullscreenBtn = document.getElementById("map-fullscreen-btn");
+        fullscreenBtn.addEventListener("click", function () {
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          } else {
+            mapEl.requestFullscreen();
+          }
+        });
+        document.addEventListener("fullscreenchange", function () {
+          fullscreenBtn.textContent = document.fullscreenElement ? "Avsluta helskärm" : "Helskärm";
+          setTimeout(function () { map.invalidateSize(); }, 100);
+        });
+      })();
+    </script>
+  {% endif %}
+{% endblock %}

@@ -167,6 +167,58 @@ SENSOR_GROUP_NAME_KEY = "sensor_group_name"
 # still come from config.OLLAMA_URL, same as every other Ollama setting.
 OLLAMA_PORT_KEY = "ollama_port"
 
+# Keys for the map center point set on Inställningar (see tiles.py) --
+# stored as two separate string settings since `settings` is a flat
+# key/value table; both are always set/cleared together.
+MAP_CENTER_LAT_KEY = "map_center_lat"
+MAP_CENTER_LON_KEY = "map_center_lon"
+
+# Key for a user-supplied tile URL template (with {z}/{x}/{y} placeholders,
+# and any API key baked directly into the URL's query string) -- lets
+# Inställningar point tile downloads at a provider that actually permits
+# bulk/offline caching instead of the public OpenStreetMap tile server,
+# which blocks exactly that kind of use (see tiles.py). Falls back to
+# config.DEFAULT_TILE_URL_TEMPLATE when unset.
+MAP_TILE_URL_KEY = "map_tile_url_template"
+
+# Key for the map tile mode set on Inställningar: "online" (the browser
+# view fetches each tile live from the configured provider on demand,
+# caching it as a side effect -- works immediately, needs connectivity,
+# the way both maps worked before the local-cache feature existed) or
+# "local" (tiles are served strictly from whatever's already in the local
+# cache -- see tiles.py -- so viewing the map never touches the network,
+# but anything outside a completed download renders blank). Falls back to
+# "online" when unset, since that's the immediately-usable default; the
+# bulk pre-download remains available either way, e.g. to pre-warm the
+# cache before a deployment expects to lose connectivity.
+MAP_TILE_MODE_KEY = "map_tile_mode"
+MAP_TILE_MODE_ONLINE = "online"
+MAP_TILE_MODE_LOCAL = "local"
+
+# Key for which *source* the bulk "Ladda ner kartor för området" download
+# (and, for "url", the "Online" mode on-demand fetch too) reads tiles from:
+# "lantmateriet_ftp" (default) -- tiles extracted via GDAL from
+# Lantmäteriet's free FTP-hosted GeoPackage (see lantmateriet_ftp.py),
+# which needs no API key/account at all, so the map works out of the box.
+# It's only practical as a slow, one-time bulk operation (measured
+# ~1.85s/tile even batched), not for live per-tile fetching -- so this
+# source always serves strictly from the local cache regardless of the
+# Online/Lokal cache mode setting above (see routes.py's map_tile). Needs
+# GDAL (gdal_translate) installed; the download route explains that and
+# how to switch back if it isn't. The alternative, "url", fetches
+# per-tile over HTTP/HTTPS from the Inställningar-configured
+# tile_url_template the way every ordinary provider (MapTiler,
+# Lantmäteriet's own WMTS, ...) normally works, but needs an API key.
+MAP_TILE_SOURCE_KEY = "map_tile_source"
+MAP_TILE_SOURCE_URL = "url"
+MAP_TILE_SOURCE_LANTMATERIET_FTP = "lantmateriet_ftp"
+
+# Key for the cached-area size preset (config.MAP_CACHE_AREA_SIZES) -- how
+# large a square around the Kartcentrum point gets downloaded/cached:
+# "small"/"medium"/"large" (see config.py for the actual km radius each
+# maps to). Falls back to config.MAP_CACHE_DEFAULT_AREA_SIZE when unset.
+MAP_CACHE_AREA_SIZE_KEY = "map_cache_area_size"
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -350,6 +402,30 @@ def list_events(
 
 def get_event(conn: sqlite3.Connection, event_id: int) -> Optional[sqlite3.Row]:
     return conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+
+
+def list_events_with_position(
+    conn: sqlite3.Connection, since: Optional[str] = None, include_adjacent: bool = True
+) -> list[sqlite3.Row]:
+    """Events with a known lat/lon -- either auto-extracted from an MGRS
+    grid reference in the report, or set by a human via the map pin-drop
+    on the event page. `since` is the same ISO-timestamp cutoff list_events
+    takes, so the Karta overview can offer the identical Tidsperiod
+    selection (24 tim/7 dagar/30 dagar/Alla) as Sammanställd hotbedömning
+    and Tidslinje. `include_adjacent=False` drops events received from an
+    angränsande enhet (see insert_event's source_unit) -- the Karta
+    "Dölj händelser från angränsande enheter" toggle. Everything else
+    here behaves the same as any other event (duplicates/trivial
+    exclusion is the caller's job, same as list_events)."""
+    query = "SELECT * FROM events WHERE lat IS NOT NULL AND lon IS NOT NULL"
+    params: list[Any] = []
+    if since is not None:
+        query += " AND created_at >= ?"
+        params.append(since)
+    if not include_adjacent:
+        query += " AND source_unit IS NULL"
+    query += " ORDER BY created_at DESC"
+    return conn.execute(query, params).fetchall()
 
 
 def get_message(conn: sqlite3.Connection, message_id: int) -> Optional[sqlite3.Row]:
@@ -563,6 +639,93 @@ def get_sensor_group_name(conn: sqlite3.Connection) -> str:
 
 def set_sensor_group_name(conn: sqlite3.Connection, value: str) -> None:
     set_setting(conn, SENSOR_GROUP_NAME_KEY, value.strip())
+
+
+def get_map_center(conn: sqlite3.Connection) -> Optional[tuple[float, float]]:
+    """The (lat, lon) center point tile downloads and both maps in the web
+    UI are built around, or None if nothing has been set yet on
+    Inställningar. Stored as plain strings (like every other setting) so
+    an unparsable stored value (shouldn't happen, but never say never)
+    fails safe as "no center set" rather than raising."""
+    lat = get_setting(conn, MAP_CENTER_LAT_KEY)
+    lon = get_setting(conn, MAP_CENTER_LON_KEY)
+    if lat is None or lon is None:
+        return None
+    try:
+        return float(lat), float(lon)
+    except ValueError:
+        return None
+
+
+def set_map_center(conn: sqlite3.Connection, lat: float, lon: float) -> None:
+    set_setting(conn, MAP_CENTER_LAT_KEY, str(lat))
+    set_setting(conn, MAP_CENTER_LON_KEY, str(lon))
+
+
+def clear_map_center(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "DELETE FROM settings WHERE key IN (?, ?)",
+        (MAP_CENTER_LAT_KEY, MAP_CENTER_LON_KEY),
+    )
+
+
+def get_map_tile_url_template(conn: sqlite3.Connection) -> str:
+    return get_setting(conn, MAP_TILE_URL_KEY) or config.DEFAULT_TILE_URL_TEMPLATE
+
+
+def set_map_tile_url_template(conn: sqlite3.Connection, value: str) -> None:
+    set_setting(conn, MAP_TILE_URL_KEY, value.strip())
+
+
+def clear_map_tile_url_template(conn: sqlite3.Connection) -> None:
+    conn.execute("DELETE FROM settings WHERE key = ?", (MAP_TILE_URL_KEY,))
+
+
+def get_map_tile_mode(conn: sqlite3.Connection) -> str:
+    value = get_setting(conn, MAP_TILE_MODE_KEY)
+    if value not in (MAP_TILE_MODE_ONLINE, MAP_TILE_MODE_LOCAL):
+        return MAP_TILE_MODE_ONLINE
+    return value
+
+
+def set_map_tile_mode(conn: sqlite3.Connection, mode: str) -> None:
+    if mode not in (MAP_TILE_MODE_ONLINE, MAP_TILE_MODE_LOCAL):
+        raise ValueError(f"invalid map tile mode: {mode!r}")
+    set_setting(conn, MAP_TILE_MODE_KEY, mode)
+
+
+def get_map_tile_source(conn: sqlite3.Connection) -> str:
+    value = get_setting(conn, MAP_TILE_SOURCE_KEY)
+    if value not in (MAP_TILE_SOURCE_URL, MAP_TILE_SOURCE_LANTMATERIET_FTP):
+        return MAP_TILE_SOURCE_LANTMATERIET_FTP
+    return value
+
+
+def set_map_tile_source(conn: sqlite3.Connection, source: str) -> None:
+    if source not in (MAP_TILE_SOURCE_URL, MAP_TILE_SOURCE_LANTMATERIET_FTP):
+        raise ValueError(f"invalid map tile source: {source!r}")
+    set_setting(conn, MAP_TILE_SOURCE_KEY, source)
+
+
+def get_map_cache_area_size(conn: sqlite3.Connection) -> str:
+    value = get_setting(conn, MAP_CACHE_AREA_SIZE_KEY)
+    if value not in config.MAP_CACHE_AREA_SIZES:
+        return config.MAP_CACHE_DEFAULT_AREA_SIZE
+    return value
+
+
+def set_map_cache_area_size(conn: sqlite3.Connection, size: str) -> None:
+    if size not in config.MAP_CACHE_AREA_SIZES:
+        raise ValueError(f"invalid map cache area size: {size!r}")
+    set_setting(conn, MAP_CACHE_AREA_SIZE_KEY, size)
+
+
+def get_map_cache_radius_km(conn: sqlite3.Connection) -> float:
+    """The actual km radius (see config.MAP_CACHE_AREA_SIZES) for whichever
+    area-size preset is currently selected -- the one value everywhere else
+    (tile-count math, downloads, Karta) actually needs, so callers don't
+    have to know both the setting and the size table themselves."""
+    return config.MAP_CACHE_AREA_SIZES[get_map_cache_area_size(conn)]
 
 
 def get_last_adjacent_send(conn: sqlite3.Connection) -> Optional[str]:

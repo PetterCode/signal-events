@@ -112,8 +112,82 @@ SENSOR_GROUP_NAME = os.environ.get(
     "SIGNAL_EVENTS_SENSOR_GROUP", "Stabsassistent test-sensorer"
 )
 
+# Fallback (lat, lon) used wherever a map needs a center point but
+# Inställningar's Kartcentrum hasn't been set yet -- Stockholm Palace
+# (Kungliga slottet), Gamla Stan (59°19'37"N 18°04'17"E). Only ever a
+# starting point/placeholder view; Kartcentrum's own configured value
+# always wins once one is set.
+DEFAULT_MAP_CENTER = (59.326944, 18.071389)
+
+# Where downloaded map tile images are cached on disk (see tiles.py) --
+# once filled, viewing the map (event page or Karta) needs no network at
+# all, matching the rest of this tool. Only the deliberate "Ladda ner
+# kartor" action on Inställningar touches the network.
+TILE_CACHE_DIR = Path(os.environ.get("SIGNAL_EVENTS_TILE_CACHE_DIR", DATA_DIR / "tiles")).resolve()
+
+# Tile source used when Inställningar hasn't been given a provider URL of
+# its own (see db.get_map_tile_url_template). Defaults to Lantmäteriet's
+# free, open "topowebb-ccby" WMTS layer (https://www.lantmateriet.se/) --
+# despite the "-ccby" in its name (a leftover from a past product rename),
+# it's actually licensed CC0 per Lantmäteriet's own technical description,
+# so commercial use and redistribution need no attribution at all -- the
+# natural fit for a Swedish skyddsobjekt, and unlike the public OSM tile
+# server (which actively blocks the kind of bulk/repeated download this
+# app needs -- confirmed by hitting that block during development, see
+# tiles.py) its terms actually permit this use.
+#
+# The DIN_TOKEN placeholder is not a working credential -- getting a real
+# one currently means registering a free Geotorget account
+# (geotorget.lantmateriet.se), applying as an NGP consumer, then
+# generating an API key via the API-portalen using the "token in URL"
+# REST method documented for this service (not the OAuth2/Bearer-header
+# one, which issues short-lived tokens this app's static URL-template
+# setting can't refresh on its own). That key must be pasted into
+# Inställningar -> Kartleverantör (never baked into source code, since
+# it's a personal credential). Until that's done, tile requests will
+# simply fail (same visible effect -- blank map tiles -- as the OSM block
+# did, just for an honest reason: nothing to guess or debug, just a key
+# to fill in). Other CC0 layers work the same way, just swap "topowebb"
+# for e.g. "topowebb_nedtonad" (muted colours, a good basemap under
+# markers). Non-Swedish deployments should set their own provider on
+# Inställningar instead -- MapTiler, Stadia Maps, and Thunderforest all
+# offer a free tier permitting tile caching for offline use.
+DEFAULT_TILE_URL_TEMPLATE = (
+    "https://api.lantmateriet.se/open/topowebb-ccby/v1/wmts/token/DIN_TOKEN/"
+    "1.0.0/topowebb/default/3857/{z}/{y}/{x}.png"
+)
+
+# Named area-size presets selectable on Inställningar (db.get_map_cache_area_size)
+# -- radius (km) around the configured center point that gets cached, i.e.
+# half the total cached square's side length ("large" -> a ~100 x 100 km
+# area). "small" is the default so a first "Ladda ner kartor" finishes
+# quickly -- larger areas take proportionally longer and download far more
+# tiles, especially via the lantmateriet_ftp source's slow bulk extraction.
+MAP_CACHE_AREA_SIZES = {
+    "small": 0.5,    # ~1 x 1 km
+    "medium": 5.0,   # ~10 x 10 km
+    "large": 50.0,   # ~100 x 100 km
+}
+MAP_CACHE_DEFAULT_AREA_SIZE = "small"
+
+# Zoom range cached for that radius. 14 is detailed enough to make out
+# individual buildings/roads; going to 15 would roughly quadruple the tile
+# count (see MAP_CACHE_MAX_TILE_COUNT) for the "large" 50 km radius, which
+# stops being a reasonable one-off bulk fetch against the public OSM tile
+# server. 8 is zoomed out enough to still show the whole cached area at
+# once.
+MAP_CACHE_MIN_ZOOM = 8
+MAP_CACHE_MAX_ZOOM = 14
+
+# Safety cap so a bug (or a center point that somehow produces a much
+# larger bounding box) can't accidentally kick off an enormous, impolite
+# bulk download against the public tile server. ~8800 tiles are expected
+# for the defaults above; this leaves headroom without being unbounded.
+MAP_CACHE_MAX_TILE_COUNT = 15000
+
 
 def ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TILE_CACHE_DIR.mkdir(parents=True, exist_ok=True)

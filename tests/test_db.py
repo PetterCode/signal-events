@@ -148,6 +148,137 @@ def test_clearing_the_ollama_port_reverts_to_the_config_default():
         assert db.get_ollama_port(conn) == _expected_default_ollama_port()
 
 
+def test_map_center_defaults_to_none():
+    with db.get_connection() as conn:
+        assert db.get_map_center(conn) is None
+
+
+def test_set_and_get_map_center_round_trip():
+    with db.get_connection() as conn:
+        db.set_map_center(conn, 59.33, 18.06)
+        lat, lon = db.get_map_center(conn)
+        assert lat == pytest.approx(59.33)
+        assert lon == pytest.approx(18.06)
+
+
+def test_clear_map_center_reverts_to_none():
+    with db.get_connection() as conn:
+        db.set_map_center(conn, 59.33, 18.06)
+        db.clear_map_center(conn)
+        assert db.get_map_center(conn) is None
+
+
+def test_get_map_center_returns_none_for_an_unparsable_stored_value():
+    with db.get_connection() as conn:
+        db.set_setting(conn, db.MAP_CENTER_LAT_KEY, "not-a-number")
+        db.set_setting(conn, db.MAP_CENTER_LON_KEY, "18.06")
+        assert db.get_map_center(conn) is None
+
+
+def test_map_tile_url_template_defaults_to_the_config_default():
+    with db.get_connection() as conn:
+        assert db.get_map_tile_url_template(conn) == config.DEFAULT_TILE_URL_TEMPLATE
+
+
+def test_set_and_get_map_tile_url_template_overrides_the_default():
+    with db.get_connection() as conn:
+        db.set_map_tile_url_template(conn, "  https://api.maptiler.com/x/{z}/{x}/{y}.png?key=abc  ")
+        assert db.get_map_tile_url_template(conn) == "https://api.maptiler.com/x/{z}/{x}/{y}.png?key=abc"
+
+
+def test_clear_map_tile_url_template_reverts_to_the_config_default():
+    with db.get_connection() as conn:
+        db.set_map_tile_url_template(conn, "https://example.com/{z}/{x}/{y}.png")
+        db.clear_map_tile_url_template(conn)
+        assert db.get_map_tile_url_template(conn) == config.DEFAULT_TILE_URL_TEMPLATE
+
+
+def test_map_tile_mode_defaults_to_online():
+    with db.get_connection() as conn:
+        assert db.get_map_tile_mode(conn) == db.MAP_TILE_MODE_ONLINE
+
+
+def test_set_and_get_map_tile_mode_round_trips():
+    with db.get_connection() as conn:
+        db.set_map_tile_mode(conn, db.MAP_TILE_MODE_LOCAL)
+        assert db.get_map_tile_mode(conn) == db.MAP_TILE_MODE_LOCAL
+        db.set_map_tile_mode(conn, db.MAP_TILE_MODE_ONLINE)
+        assert db.get_map_tile_mode(conn) == db.MAP_TILE_MODE_ONLINE
+
+
+def test_set_map_tile_mode_rejects_unknown_values():
+    with db.get_connection() as conn:
+        with pytest.raises(ValueError):
+            db.set_map_tile_mode(conn, "offline")
+
+
+def test_get_map_tile_mode_falls_back_to_online_for_an_unparsable_stored_value():
+    with db.get_connection() as conn:
+        db.set_setting(conn, db.MAP_TILE_MODE_KEY, "bogus")
+        assert db.get_map_tile_mode(conn) == db.MAP_TILE_MODE_ONLINE
+
+
+def test_map_tile_source_defaults_to_lantmateriet_ftp():
+    with db.get_connection() as conn:
+        assert db.get_map_tile_source(conn) == db.MAP_TILE_SOURCE_LANTMATERIET_FTP
+
+
+def test_set_and_get_map_tile_source_round_trips():
+    with db.get_connection() as conn:
+        db.set_map_tile_source(conn, db.MAP_TILE_SOURCE_LANTMATERIET_FTP)
+        assert db.get_map_tile_source(conn) == db.MAP_TILE_SOURCE_LANTMATERIET_FTP
+        db.set_map_tile_source(conn, db.MAP_TILE_SOURCE_URL)
+        assert db.get_map_tile_source(conn) == db.MAP_TILE_SOURCE_URL
+
+
+def test_set_map_tile_source_rejects_unknown_values():
+    with db.get_connection() as conn:
+        with pytest.raises(ValueError):
+            db.set_map_tile_source(conn, "wmts")
+
+
+def test_get_map_tile_source_falls_back_to_lantmateriet_ftp_for_an_unparsable_stored_value():
+    with db.get_connection() as conn:
+        db.set_setting(conn, db.MAP_TILE_SOURCE_KEY, "bogus")
+        assert db.get_map_tile_source(conn) == db.MAP_TILE_SOURCE_LANTMATERIET_FTP
+
+
+def test_map_cache_area_size_defaults_to_small():
+    with db.get_connection() as conn:
+        assert db.get_map_cache_area_size(conn) == config.MAP_CACHE_DEFAULT_AREA_SIZE
+        assert db.get_map_cache_area_size(conn) == "small"
+
+
+def test_set_and_get_map_cache_area_size_round_trips():
+    with db.get_connection() as conn:
+        db.set_map_cache_area_size(conn, "small")
+        assert db.get_map_cache_area_size(conn) == "small"
+        db.set_map_cache_area_size(conn, "medium")
+        assert db.get_map_cache_area_size(conn) == "medium"
+
+
+def test_set_map_cache_area_size_rejects_unknown_values():
+    with db.get_connection() as conn:
+        with pytest.raises(ValueError):
+            db.set_map_cache_area_size(conn, "huge")
+
+
+def test_get_map_cache_area_size_falls_back_to_small_for_an_unparsable_stored_value():
+    with db.get_connection() as conn:
+        db.set_setting(conn, db.MAP_CACHE_AREA_SIZE_KEY, "bogus")
+        assert db.get_map_cache_area_size(conn) == "small"
+
+
+def test_get_map_cache_radius_km_resolves_the_selected_preset():
+    with db.get_connection() as conn:
+        db.set_map_cache_area_size(conn, "small")
+        assert db.get_map_cache_radius_km(conn) == pytest.approx(0.5)
+        db.set_map_cache_area_size(conn, "medium")
+        assert db.get_map_cache_radius_km(conn) == pytest.approx(5.0)
+        db.set_map_cache_area_size(conn, "large")
+        assert db.get_map_cache_radius_km(conn) == pytest.approx(50.0)
+
+
 def test_create_and_verify_user():
     with db.get_connection() as conn:
         db.create_user(conn, "Vakt Andersson", "hemligt123")
@@ -479,6 +610,29 @@ def test_reset_all_empties_every_table_and_resets_autoincrement():
         assert new_message_id == 1
 
 
+def test_reset_all_restores_map_settings_to_their_defaults():
+    """"Rensa allt" wipes the whole settings table, and Kartleverantör
+    (source + URL template), områdesstorlek, and Kartcentrum all read
+    through get_setting's default fallback -- so a full reset must leave
+    every one of them back at its out-of-the-box default, not stuck on
+    whatever was last configured."""
+    with db.get_connection() as conn:
+        db.set_map_tile_source(conn, db.MAP_TILE_SOURCE_URL)
+        db.set_map_tile_url_template(conn, "https://example.com/{z}/{x}/{y}.png")
+        db.set_map_cache_area_size(conn, "large")
+        db.set_map_center(conn, 58.0, 12.0)
+        assert db.get_map_tile_source(conn) == db.MAP_TILE_SOURCE_URL
+        assert db.get_map_cache_area_size(conn) == "large"
+        assert db.get_map_center(conn) == (58.0, 12.0)
+
+        db.reset_all(conn)
+
+        assert db.get_map_tile_source(conn) == db.MAP_TILE_SOURCE_LANTMATERIET_FTP
+        assert db.get_map_tile_url_template(conn) == config.DEFAULT_TILE_URL_TEMPLATE
+        assert db.get_map_cache_area_size(conn) == config.MAP_CACHE_DEFAULT_AREA_SIZE
+        assert db.get_map_center(conn) is None
+
+
 def test_insert_event_defaults_is_trivial_to_false():
     with db.get_connection() as conn:
         message_id = db.insert_message(
@@ -636,6 +790,66 @@ def test_update_event_can_set_and_clear_lat_lon():
         event = db.get_event(conn, event_id)
         assert event["lat"] is None
         assert event["lon"] is None
+
+
+def test_list_events_with_position_only_returns_events_that_have_both_coordinates():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9004, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        with_position = db.insert_event(
+            conn, message_id=message_id, fields={"place": "Kajen", "lat": 58.6, "lon": 15.3}
+        )
+        db.insert_event(conn, message_id=message_id, fields={"place": "Norra grinden"})
+
+        rows = db.list_events_with_position(conn)
+        assert [r["id"] for r in rows] == [with_position]
+
+
+def test_list_events_with_position_filters_by_since():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9005, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        old_event = db.insert_event(
+            conn, message_id=message_id, fields={"place": "Kajen", "lat": 58.6, "lon": 15.3}
+        )
+        conn.execute(
+            "UPDATE events SET created_at = ? WHERE id = ?",
+            ("2020-01-01T10:00:00+00:00", old_event),
+        )
+        new_event = db.insert_event(
+            conn, message_id=message_id, fields={"place": "Norra grinden", "lat": 58.7, "lon": 15.4}
+        )
+
+        rows = db.list_events_with_position(conn, since="2025-01-01T00:00:00+00:00")
+        assert [r["id"] for r in rows] == [new_event]
+
+        rows = db.list_events_with_position(conn)
+        assert {r["id"] for r in rows} == {old_event, new_event}
+
+
+def test_list_events_with_position_include_adjacent_false_excludes_adjacent_events():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9010, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        own_id = db.insert_event(
+            conn, message_id=message_id, fields={"place": "Egen", "lat": 58.6, "lon": 15.3}
+        )
+        db.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Angränsande", "lat": 58.7, "lon": 15.4, "source_unit": "2.Pluton"},
+        )
+
+        rows = db.list_events_with_position(conn, include_adjacent=False)
+        assert [r["id"] for r in rows] == [own_id]
+
+        rows = db.list_events_with_position(conn)
+        assert len(rows) == 2
 
 
 def test_migrate_add_lat_lon_columns_is_idempotent_on_an_old_schema(tmp_path, monkeypatch):

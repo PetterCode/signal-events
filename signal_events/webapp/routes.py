@@ -7,20 +7,30 @@ import shutil
 import socket
 import sqlite3
 import tempfile
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import (
-    Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, session,
-    url_for,
+    Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file,
+    session, url_for,
 )
 from werkzeug.utils import secure_filename
 
-from .. import analysis, config, db, duplicates, importer, llm, naming, signal_client, triviality
+from .. import (
+    analysis, config, coordinates, db, demo_map, duplicates, importer, lantmateriet_ftp, llm,
+    naming, signal_client, tiles, triviality,
+)
 from ..reports import generator
 
 bp = Blueprint("events", __name__)
+
+# Guards against starting a second tile-download thread while one is
+# already running -- a plain in-process flag is enough since this app is a
+# single local process, not a multi-worker deployment. Reset by a process
+# restart, which is fine: any in-flight download thread would be gone too.
+_tile_download_lock = threading.Lock()
 
 # --- Access control -------------------------------------------------------
 #
@@ -51,6 +61,14 @@ _ADMIN_ONLY_ENDPOINTS = {
     "events.demo_sensor_toggle",
     "events.import_training_day",
     "events.system_log",
+    "events.save_map_center",
+    "events.clear_map_center",
+    "events.save_map_tile_url",
+    "events.save_map_tile_mode",
+    "events.save_map_tile_source",
+    "events.save_map_cache_area_size",
+    "events.download_map_tiles",
+    "events.purge_blocked_map_tiles",
 }
 
 
@@ -348,14 +366,44 @@ def settings():
         sensor_group = db.get_sensor_group_name(conn)
         ollama_port = db.get_ollama_port(conn)
         users = db.list_users(conn)
+        map_center = db.get_map_center(conn)
+        map_tile_url_template = db.get_map_tile_url_template(conn)
+        map_tile_mode = db.get_map_tile_mode(conn)
+        map_tile_source = db.get_map_tile_source(conn)
+        map_cache_area_size = db.get_map_cache_area_size(conn)
+        map_cache_radius_km = db.get_map_cache_radius_km(conn)
 
     example_filename = naming.build_report_filename(unit_name, "hotbedomning", "pdf")
+    map_center_mgrs = coordinates.to_mgrs(*map_center) if map_center is not None else None
+    map_expected_tiles = None
+    map_cached_tiles = tiles.cached_tile_count(config.TILE_CACHE_DIR)
+    if map_center is not None:
+        map_expected_tiles = tiles.expected_tile_count(
+            map_center[0], map_center[1], map_cache_radius_km,
+            config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
+        )
+        map_cached_tiles = tiles.cached_tile_count_for_area(
+            config.TILE_CACHE_DIR, map_center[0], map_center[1], map_cache_radius_km,
+            config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
+        )
     return render_template(
         "settings.html", unit_name=unit_name, example_filename=example_filename,
         adjacent_units=adjacent_units, watch_group=watch_group,
         report_group=report_group, recurring_group=recurring_group,
         sensor_group=sensor_group, ollama_port=ollama_port, users=users,
         lan_url=_lan_url(),
+        map_center=map_center, map_center_mgrs=map_center_mgrs,
+        map_cache_radius_km=map_cache_radius_km,
+        map_cache_area_size=map_cache_area_size,
+        map_cache_min_zoom=config.MAP_CACHE_MIN_ZOOM,
+        map_cache_max_zoom=config.MAP_CACHE_MAX_ZOOM,
+        map_cached_tiles=map_cached_tiles,
+        map_expected_tiles=map_expected_tiles,
+        map_tile_url_template=map_tile_url_template,
+        map_tile_url_is_default=map_tile_url_template == config.DEFAULT_TILE_URL_TEMPLATE,
+        map_tile_mode=map_tile_mode,
+        map_tile_source=map_tile_source,
+        map_gdal_available=lantmateriet_ftp.gdal_available(),
     )
 
 
@@ -407,6 +455,241 @@ def save_ollama_port():
     return redirect(url_for("events.settings"))
 
 
+@bp.route("/settings/map-center", methods=["POST"])
+def save_map_center():
+    lat_raw = request.form.get("lat", "").strip()
+    lon_raw = request.form.get("lon", "").strip()
+    try:
+        lat, lon = float(lat_raw), float(lon_raw)
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError
+    except ValueError:
+        flash(
+            "Ogiltig position -- ange latitud (-90 till 90) och longitud "
+            "(-180 till 180), t.ex. 59.3300, 18.0600.", "error",
+        )
+    else:
+        with db.get_connection() as conn:
+            db.set_map_center(conn, lat, lon)
+        flash(f"Kartcentrum sparat ({lat:.5f}, {lon:.5f}).")
+    return redirect(url_for("events.settings"))
+
+
+@bp.route("/settings/map-center/clear", methods=["POST"])
+def clear_map_center():
+    with db.get_connection() as conn:
+        db.clear_map_center(conn)
+    flash("Kartcentrum borttaget.")
+    return redirect(url_for("events.settings"))
+
+
+@bp.route("/settings/map-tile-url", methods=["POST"])
+def save_map_tile_url():
+    url_template = request.form.get("tile_url_template", "").strip()
+    if not url_template:
+        with db.get_connection() as conn:
+            db.clear_map_tile_url_template(conn)
+        flash(f"Kartleverantör återställd till standard ({config.DEFAULT_TILE_URL_TEMPLATE}).")
+    elif "{z}" not in url_template or "{x}" not in url_template or "{y}" not in url_template:
+        flash(
+            "Ogiltig kart-URL -- måste innehålla platshållarna {z}, {x} och {y}, "
+            "t.ex. https://api.maptiler.com/maps/basic-v2/{z}/{x}/{y}.png?key=DIN_NYCKEL",
+            "error",
+        )
+    else:
+        with db.get_connection() as conn:
+            db.set_map_tile_url_template(conn, url_template)
+        flash("Kartleverantör sparad.")
+    return redirect(url_for("events.settings"))
+
+
+@bp.route("/settings/map-tile-mode", methods=["POST"])
+def save_map_tile_mode():
+    mode = request.form.get("tile_mode", "").strip()
+    try:
+        with db.get_connection() as conn:
+            db.set_map_tile_mode(conn, mode)
+    except ValueError:
+        flash("Ogiltigt kartläge.", "error")
+    else:
+        if mode == db.MAP_TILE_MODE_ONLINE:
+            flash("Kartläge satt till online -- kartrutor hämtas live vid behov.")
+        else:
+            flash("Kartläge satt till lokal cache -- endast nedladdade kartrutor visas.")
+    return redirect(url_for("events.settings"))
+
+
+@bp.route("/settings/map-tile-source", methods=["POST"])
+def save_map_tile_source():
+    source = request.form.get("tile_source", "").strip()
+    try:
+        with db.get_connection() as conn:
+            db.set_map_tile_source(conn, source)
+    except ValueError:
+        flash("Ogiltig kartkälla.", "error")
+    else:
+        if source == db.MAP_TILE_SOURCE_LANTMATERIET_FTP:
+            flash(
+                "Kartkälla satt till Lantmäteriets FTP -- endast nedladdade "
+                "kartrutor visas oavsett kartläge, eftersom denna källa är för "
+                "långsam för att hämta rutor live.",
+            )
+        else:
+            flash("Kartkälla satt till URL-baserad kartleverantör.")
+    return redirect(url_for("events.settings"))
+
+
+@bp.route("/settings/map-cache-area-size", methods=["POST"])
+def save_map_cache_area_size():
+    size = request.form.get("area_size", "").strip()
+    try:
+        with db.get_connection() as conn:
+            db.set_map_cache_area_size(conn, size)
+    except ValueError:
+        flash("Ogiltig områdesstorlek.", "error")
+    else:
+        radius_km = config.MAP_CACHE_AREA_SIZES[size]
+        flash(f"Områdesstorlek satt till {size} (radie {radius_km:g} km, dvs {radius_km * 2:g} x {radius_km * 2:g} km).")
+    return redirect(url_for("events.settings"))
+
+
+def _download_tiles_in_background(
+    center_lat: float, center_lon: float, tile_url_template: str, source: str,
+    radius_km: float,
+) -> None:
+    try:
+        if source == db.MAP_TILE_SOURCE_LANTMATERIET_FTP:
+            written, failed_zooms = lantmateriet_ftp.extract_area_to_cache(
+                center_lat, center_lon, radius_km,
+                config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM, config.TILE_CACHE_DIR,
+            )
+            with db.get_connection() as conn:
+                detail = f"källa=lantmateriet_ftp nya_rutor={written}"
+                if failed_zooms:
+                    detail += f" misslyckade_zoomnivåer={failed_zooms}"
+                db.log_system_event(conn, "map_tiles_download_finished", detail)
+            return
+
+        downloaded, skipped, failed, blocked = tiles.download_area(
+            center_lat, center_lon, radius_km,
+            config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM, config.TILE_CACHE_DIR,
+            tile_url_template=tile_url_template,
+        )
+        with db.get_connection() as conn:
+            if blocked:
+                db.log_system_event(
+                    conn, "map_tiles_download_blocked",
+                    f"nedladdade={downloaded} redan_cachade={skipped} misslyckade={failed} "
+                    "-- OpenStreetMap blockerade fler förfrågningar, se README.",
+                )
+            else:
+                db.log_system_event(
+                    conn, "map_tiles_download_finished",
+                    f"nedladdade={downloaded} redan_cachade={skipped} misslyckade={failed}",
+                )
+    except Exception as exc:
+        with db.get_connection() as conn:
+            db.log_system_event(conn, "map_tiles_download_failed", str(exc))
+    finally:
+        _tile_download_lock.release()
+
+
+@bp.route("/settings/map-center/download", methods=["POST"])
+def download_map_tiles():
+    """Kicks off a background thread that fills the local tile cache
+    (tiles.py) for the Inställningar-configured area size (small/medium/
+    large -- see db.get_map_cache_radius_km) around the configured center
+    point -- the one deliberate, network-touching step that lets both maps
+    in the web UI work fully offline afterward. Guarded so a second click
+    while one is already running doesn't start a redundant, overlapping
+    fetch (download_area is idempotent/resumable on its own, but there's no
+    reason to run two at once).
+
+    Uses whichever source is configured on Inställningar -- the normal
+    per-tile URL fetch (tiles.download_area), or Lantmäteriet's free FTP
+    GeoPackage via GDAL (lantmateriet_ftp.extract_area_to_cache), which
+    needs no API key but is drastically slower (measured ~1.85s/tile even
+    batched -- several hours for this app's usual area, vs. minutes for a
+    working URL-based provider)."""
+    with db.get_connection() as conn:
+        center = db.get_map_center(conn)
+        tile_url_template = db.get_map_tile_url_template(conn)
+        source = db.get_map_tile_source(conn)
+        radius_km = db.get_map_cache_radius_km(conn)
+    if center is None:
+        flash("Sätt ett kartcentrum innan du laddar ner kartor.", "error")
+        return redirect(url_for("events.settings"))
+
+    if source == db.MAP_TILE_SOURCE_LANTMATERIET_FTP and not lantmateriet_ftp.gdal_available():
+        flash(
+            "GDAL (gdal_translate) är inte installerat -- krävs för Lantmäteriets "
+            "FTP-källa. Installera t.ex. med \"brew install gdal\", eller växla "
+            "tillbaka till URL-baserad kartleverantör.", "error",
+        )
+        return redirect(url_for("events.settings"))
+
+    expected = tiles.expected_tile_count(
+        center[0], center[1], radius_km,
+        config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
+    )
+    if expected > config.MAP_CACHE_MAX_TILE_COUNT:
+        flash(
+            f"Området skulle kräva {expected} kartrutor, vilket överstiger "
+            f"gränsen ({config.MAP_CACHE_MAX_TILE_COUNT}). Välj en mindre "
+            "områdesstorlek.", "error",
+        )
+        return redirect(url_for("events.settings"))
+
+    if not _tile_download_lock.acquire(blocking=False):
+        flash("En nedladdning pågår redan -- vänta tills den är klar.", "error")
+        return redirect(url_for("events.settings"))
+
+    with db.get_connection() as conn:
+        db.log_system_event(
+            conn, "map_tiles_download_started",
+            f"källa={source} centrum=({center[0]:.5f}, {center[1]:.5f}) "
+            f"radie={radius_km}km "
+            f"zoom={config.MAP_CACHE_MIN_ZOOM}-{config.MAP_CACHE_MAX_ZOOM} rutor={expected}",
+        )
+    threading.Thread(
+        target=_download_tiles_in_background,
+        args=(center[0], center[1], tile_url_template, source, radius_km), daemon=True,
+    ).start()
+    if source == db.MAP_TILE_SOURCE_LANTMATERIET_FTP:
+        flash(
+            f"Nedladdning av {expected} kartrutor via Lantmäteriets FTP startad i "
+            "bakgrunden -- detta är betydligt långsammare än en URL-baserad "
+            "leverantör (kan ta flera timmar för hela området). Uppdatera sidan "
+            "för att se hur många som laddats ner.",
+        )
+    else:
+        flash(
+            f"Nedladdning av {expected} kartrutor startad i bakgrunden -- det kan ta "
+            "en stund. Uppdatera sidan för att se hur många som laddats ner.",
+        )
+    return redirect(url_for("events.settings"))
+
+
+@bp.route("/settings/map-center/purge-blocked", methods=["POST"])
+def purge_blocked_map_tiles():
+    """Removes any cached tile that's actually OpenStreetMap's "you've
+    been blocked" notice image rather than real map imagery (see
+    tiles.py's _BLOCKED_HEADER/_BLOCKED_TILE_SHA256) -- a one-time cleanup
+    for a cache poisoned by a download that predates the fix that stops
+    and flags this instead of silently caching it."""
+    removed = tiles.purge_blocked_tiles(config.TILE_CACHE_DIR)
+    with db.get_connection() as conn:
+        db.log_system_event(conn, "map_tiles_purge_blocked", f"borttagna={removed}")
+    if removed:
+        flash(
+            f"{removed} blockerade kartrutor togs bort ur cachen. Kör "
+            "nedladdningen igen senare för att fylla i dem på nytt."
+        )
+    else:
+        flash("Inga blockerade kartrutor hittades i cachen.")
+    return redirect(url_for("events.settings"))
+
+
 @bp.route("/settings/users", methods=["POST"])
 def create_user():
     name = request.form.get("name", "").strip()
@@ -450,6 +733,129 @@ def delete_adjacent_unit(unit_id: int):
         db.delete_adjacent_unit(conn, unit_id)
     flash("Angränsande enhet borttagen.")
     return redirect(url_for("events.settings"))
+
+
+def _blank_tile_png() -> bytes:
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGBA", (256, 256), (0, 0, 0, 0)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+_BLANK_TILE_PNG = _blank_tile_png()
+
+
+@bp.route("/tiles/<int:zoom>/<int:x>/<int:y>.png")
+def map_tile(zoom: int, x: int, y: int):
+    """Serves one map tile to the browser, behaviour depending on the
+    Inställningar-configured map tile mode (db.get_map_tile_mode):
+
+    - Demo mode (db.has_demo_events): serves a procedurally-generated
+      cartoon-style dummy tile (see demo_map.py) instead of any real
+      provider, regardless of the configured mode -- demo/training event
+      positions are fictional, so showing them over real imagery would be
+      misleading, and this way trying the demo needs no tile provider
+      token or network at all.
+    - "online" (the default otherwise): fetches the tile live from the
+      configured provider if it isn't already cached, caching it for next
+      time -- the map works immediately, the way it did before local tile
+      caching existed, and needs connectivity for whatever isn't cached
+      yet.
+    - "local": serves strictly from the local cache (tiles.py), same as
+      before this mode setting existed -- never touches the network
+      itself, so an area outside a completed download just renders blank
+      rather than Leaflet's broken-image icon.
+
+    If the configured tile *source* (db.get_map_tile_source) is
+    Lantmäteriet's FTP GeoPackage rather than a URL, "online" mode is
+    ignored and tiles are always served cache-only -- per-tile fetching
+    through that source is far too slow for live browsing (see
+    lantmateriet_ftp.py), so it's bulk-download-only.
+
+    Either way, keeping the tile provider URL server-side (rather than
+    pointing Leaflet at it directly) means any API key baked into it
+    never reaches the browser."""
+    with db.get_connection() as conn:
+        demo_active = db.has_demo_events(conn)
+        mode = db.get_map_tile_mode(conn)
+        source = db.get_map_tile_source(conn)
+        tile_url_template = db.get_map_tile_url_template(conn)
+    if demo_active:
+        return send_file(io.BytesIO(demo_map.generate_demo_tile(zoom, x, y)), mimetype="image/png")
+    if mode == db.MAP_TILE_MODE_ONLINE and source == db.MAP_TILE_SOURCE_URL:
+        data = tiles.fetch_tile_on_demand(zoom, x, y, config.TILE_CACHE_DIR, tile_url_template)
+        if data is not None:
+            return send_file(io.BytesIO(data), mimetype="image/png")
+        return send_file(io.BytesIO(_BLANK_TILE_PNG), mimetype="image/png")
+    path = tiles.tile_path(config.TILE_CACHE_DIR, zoom, x, y)
+    if path.exists():
+        return send_file(path, mimetype="image/png")
+    return send_file(io.BytesIO(_BLANK_TILE_PNG), mimetype="image/png")
+
+
+@bp.route("/karta")
+def map_view():
+    preset = request.args.get("since", "7d")
+    # "1" (default) shows events received from an angränsande enhet
+    # alongside this unit's own; "0" is the Kart-vy "Dölj händelser från
+    # angränsande enheter" toggle.
+    show_adjacent = request.args.get("adjacent", "1") != "0"
+    # "1" (default) shows every event marker; "0" is "Dölj alla
+    # händelser" -- a plain decluttering view of Kartcentrum/crosshair
+    # against the base map. Filtered client-side (not at the query
+    # below) so the "N händelser" count/hint stays accurate even while
+    # markers themselves are hidden.
+    show_events = request.args.get("events", "1") != "0"
+    with db.get_connection() as conn:
+        events = db.list_events_with_position(
+            conn, since=_since_iso(preset), include_adjacent=show_adjacent
+        )
+        map_center = db.get_map_center(conn)
+        map_cache_radius_km = db.get_map_cache_radius_km(conn)
+    markers = [
+        {
+            "id": e["id"],
+            "lat": e["lat"],
+            "lon": e["lon"],
+            "tnr": naming.event_tnr(e["event_time"], e["created_at"]),
+            "place": e["place"],
+            "object": e["object"],
+            "activity": e["activity"],
+            "source_unit": e["source_unit"],
+            "url": url_for("events.event_detail", event_id=e["id"]),
+            "in_cache": (
+                map_center is not None
+                and tiles.point_in_cached_area(
+                    e["lat"], e["lon"], map_center[0], map_center[1], map_cache_radius_km
+                )
+            ),
+        }
+        for e in events
+    ]
+    fallback_lat, fallback_lon = map_center or config.DEFAULT_MAP_CENTER
+    return render_template(
+        "karta.html", markers=markers, map_has_center=map_center is not None,
+        map_fallback_lat=fallback_lat, map_fallback_lon=fallback_lon,
+        map_min_zoom=config.MAP_CACHE_MIN_ZOOM,
+        map_max_zoom=config.MAP_CACHE_MAX_ZOOM, since=preset,
+        show_adjacent=show_adjacent, show_events=show_events,
+    )
+
+
+@bp.route("/karta/mgrs")
+def map_center_mgrs():
+    """Tiny JSON endpoint backing Kart-vy's crosshair position box: the
+    map itself only knows plain lat/lon (Leaflet has no MGRS support), so
+    the crosshair's JS asks this route to convert whatever point is
+    currently under it, the same conversion Kartcentrum's own MGRS line
+    uses (coordinates.to_mgrs) -- offline, same-origin, no different than
+    any other local page asset."""
+    lat = request.args.get("lat", type=float)
+    lon = request.args.get("lon", type=float)
+    if lat is None or lon is None:
+        return jsonify({"mgrs": None}), 400
+    return jsonify({"mgrs": coordinates.to_mgrs(lat, lon)})
 
 
 @bp.route("/events")
