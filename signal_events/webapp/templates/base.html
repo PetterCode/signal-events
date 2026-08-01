@@ -28,6 +28,15 @@
     .badge-adjacent { background: #d7e3f0; color: #1f5c8a; }
     .header-adjacent { font-size: 0.75rem; }
     .card { background: #fff; padding: 1rem 1.5rem; border-radius: 6px; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+    .card > details > summary { cursor: pointer; list-style: none; }
+    .card > details > summary::-webkit-details-marker { display: none; }
+    .card > details > summary::before { content: "\25b8"; display: inline-block; width: 1rem; color: #666; }
+    .card > details[open] > summary::before { content: "\25be"; }
+    .card > details > summary h3 { display: inline; margin: 0; }
+    .card > details[open] > summary { margin-bottom: 0.75rem; }
+    .settings-subsection + .settings-subsection { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid #e0e0e0; }
+    .settings-subsection h4 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+    .settings-nav { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; }
     label { display: block; margin-top: 0.75rem; font-size: 0.85rem; font-weight: 600; color: #333; }
     input[type=text], input[type=password], select, textarea { width: 100%; padding: 0.4rem; margin-top: 0.2rem; box-sizing: border-box; font-size: 0.9rem; }
     textarea { min-height: 4rem; }

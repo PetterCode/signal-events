@@ -20,187 +20,6 @@
   </div>
 
   <div class="card">
-    <form method="post">
-      <label for="unit_name">Enhetsnamn</label>
-      <input type="text" id="unit_name" name="unit_name" value="{{ unit_name }}"
-             placeholder="t.ex. Kompani 1">
-      <p style="font-size:0.85rem;color:#666">
-        Enhetsnamnet används tillsammans med ett tidsstämplat TNR och
-        rapporttyp i filnamnen för genererade rapporter, t.ex.:
-      </p>
-      <p class="mono" style="display:inline-block">{{ example_filename }}</p>
-
-      <div class="actions">
-        <button type="submit">Spara</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="card">
-    <h3>Signal-grupper</h3>
-    <p style="font-size:0.85rem;color:#666">
-      Namnen på de Signal-grupper appen använder. <strong>Bevakningsgrupp</strong>
-      är gruppen händelserapporter hämtas ifrån (<span class="mono">signal-events watch</span>/<span class="mono">sync</span>).
-      <strong>Rapportgrupp</strong> är dit genererade händelserapporter och
-      hotbedömningar skickas &mdash; samma grupp där angränsande enheters
-      statusrapporter tas emot ifrån. <strong>Återkommande-grupp</strong> är
-      dit listan över återkommande fordon/personer/observationer skickas.
-      <strong>Sensorgrupp</strong> är gruppen automatiska sensorutlösta
-      händelser hämtas ifrån &mdash; en sensorgateway rapporterar dit i
-      samma format som vanliga händelserapporter, så de tolkas och lagras
-      på exakt samma sätt och visas i den vanliga händelseloggen.
-      Ändringar här gäller direkt för knapparna i webbgränssnittet, men
-      kräver en omstart av <span class="mono">signal-events watch</span>/<span class="mono">serve --watch</span>
-      för att börja gälla för bakgrundsbevakningen.
-    </p>
-    <form method="post" action="{{ url_for('events.save_groups') }}">
-      <label for="watch_group">Bevakningsgrupp (hämtar händelser ifrån)</label>
-      <input type="text" id="watch_group" name="watch_group" value="{{ watch_group }}">
-
-      <label for="report_group">Rapportgrupp (skickar rapporter/hotbedömningar till)</label>
-      <input type="text" id="report_group" name="report_group" value="{{ report_group }}">
-
-      <label for="recurring_group">Återkommande-grupp (skickar listan över återkommande till)</label>
-      <input type="text" id="recurring_group" name="recurring_group" value="{{ recurring_group }}">
-
-      <label for="sensor_group">Sensorgrupp (hämtar automatiska sensorhändelser ifrån)</label>
-      <input type="text" id="sensor_group" name="sensor_group" value="{{ sensor_group }}">
-
-      <div class="actions">
-        <button type="submit">Spara Signal-grupper</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="card">
-    <h3>Ollama-port</h3>
-    <p style="font-size:0.85rem;color:#666">
-      Porten den lokala Ollama-servern nås på (AI-analys-chatten och
-      <span class="mono">--llm</span>-flaggan i CLI:t). Ändra den här om du
-      kör <span class="mono">ollama serve</span> på en annan port än
-      standard. Gäller direkt, ingen omstart krävs.
-    </p>
-    <form method="post" action="{{ url_for('events.save_ollama_port') }}">
-      <label for="ollama_port">Port</label>
-      <input type="text" id="ollama_port" name="ollama_port" value="{{ ollama_port }}" inputmode="numeric" pattern="[0-9]*">
-
-      <div class="actions">
-        <button type="submit">Spara Ollama-port</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="card">
-    <h3>Ytterligare användare</h3>
-    <p style="font-size:0.85rem;color:#666">
-      Konton för gäster som ansluter till webbgränssnittet från samma
-      WiFi/LAN som datorn som kör appen (t.ex. via
-      <span class="mono">192.168.1.23:5000</span> i webbläsaren, inte
-      <span class="mono">localhost</span>). De loggar in med namn och
-      lösenord och kan granska/lägga till händelser och se
-      rapporter/hotbedömningar, men når varken Inställningar eller Demo
-      och övning &mdash; det märket ser bara du, inloggad på den här
-      datorn. Kräver att servern startas med <span class="mono">--host 0.0.0.0</span>
-      (eller en LAN-synlig adress); med standardinställningen
-      <span class="mono">127.0.0.1</span> är webbgränssnittet bara nåbart
-      från den här datorn, och den här sektionen behövs inte alls.
-    </p>
-
-    {% if users %}
-      <table>
-        <thead><tr><th>Namn</th><th>Skapad</th><th></th></tr></thead>
-        <tbody>
-          {% for user in users %}
-            <tr>
-              <td>{{ user.name }}</td>
-              <td>{{ user.created_at }}</td>
-              <td>
-                <form method="post" action="{{ url_for('events.delete_user', user_id=user.id) }}" style="display:inline">
-                  <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ta bort</button>
-                </form>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p style="color:#666">Inga ytterligare användare tillagda ännu.</p>
-    {% endif %}
-
-    <form method="post" action="{{ url_for('events.create_user') }}">
-      <label for="new_user_name">Namn</label>
-      <input type="text" id="new_user_name" name="name" placeholder="t.ex. Vakt Andersson">
-      <label for="new_user_password">Lösenord</label>
-      <input type="password" id="new_user_password" name="password">
-      <div class="actions">
-        <button type="submit">Lägg till användare</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="card">
-    <h3>Dela adress med gäster</h3>
-    {% if lan_url %}
-      <p style="font-size:0.85rem;color:#666">
-        Låt en gäst skanna koden med sin telefonkamera för att öppna
-        inloggningssidan direkt, i stället för att skriva in adressen för
-        hand. Fungerar bara om gästens enhet är ansluten till samma
-        WiFi/LAN som den här datorn.
-      </p>
-      <img src="{{ url_for('events.lan_qrcode') }}" alt="QR-kod till {{ lan_url }}"
-           width="200" height="200" style="display:block">
-      <p class="mono" style="font-size:0.8rem">{{ lan_url }}</p>
-    {% else %}
-      <p style="font-size:0.85rem;color:#666">
-        Servern är just nu bara nåbar från den här datorn
-        (<span class="mono">127.0.0.1</span>). Starta om med
-        <span class="mono">signal-events serve --host 0.0.0.0</span> för
-        att göra den nåbar &mdash; och den här QR-koden användbar &mdash;
-        för andra enheter på samma WiFi/LAN.
-      </p>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <h3>Angränsande enheter</h3>
-    <p style="font-size:0.85rem;color:#666">
-      Namn på angränsande enheter, för referens på sammanställd
-      hotbedömning-sidan. En inkommande statusrapport identifieras
-      automatiskt utifrån enhetsnamnet i rapportens eget filnamn (t.ex.
-      <span class="mono">Kompani_2_301842_aterkommande.pdf</span> &rarr;
-      "Kompani_2") &mdash; ingen koppling till Signal-avsändare behövs här.
-    </p>
-
-    {% if adjacent_units %}
-      <table>
-        <thead><tr><th>Namn</th><th></th></tr></thead>
-        <tbody>
-          {% for unit in adjacent_units %}
-            <tr>
-              <td>{{ unit.name }}</td>
-              <td>
-                <form method="post" action="{{ url_for('events.delete_adjacent_unit', unit_id=unit.id) }}" style="display:inline">
-                  <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ta bort</button>
-                </form>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p style="color:#666">Inga angränsande enheter tillagda ännu.</p>
-    {% endif %}
-
-    <form method="post" action="{{ url_for('events.add_adjacent_unit') }}">
-      <label for="adjacent_unit_name">Lägg till enhet</label>
-      <input type="text" id="adjacent_unit_name" name="name" placeholder="t.ex. Kompani 2">
-      <div class="actions">
-        <button type="submit">Lägg till</button>
-      </div>
-    </form>
-  </div>
-
-  <div class="card">
     <h3>Rensa händelselogg</h3>
     <p style="font-size:0.85rem;color:#666">
       Tar bort samtliga rapporter, meddelanden och bilagor. Enhetsnamnet,
@@ -213,5 +32,412 @@
         <button type="submit" class="btn-danger">Rensa händelselogg</button>
       </div>
     </form>
+  </div>
+
+  <div class="settings-nav">
+    Hoppa till:
+    <a href="#settings-enhet">Enhet</a>
+    <a href="#settings-signalgrupper">Signalgrupper</a>
+    <a href="#settings-karta">Kartinställningar</a>
+    <a href="#settings-ai">AI-inställningar</a>
+    <a href="#settings-anvandare">Lokala användare</a>
+  </div>
+
+  <div class="card">
+    <details id="settings-enhet">
+      <summary><h3>Enhet</h3></summary>
+
+      <div class="settings-subsection">
+        <h4>Enhetsnamn</h4>
+        <form method="post">
+          <label for="unit_name">Enhetsnamn</label>
+          <input type="text" id="unit_name" name="unit_name" value="{{ unit_name }}"
+                 placeholder="t.ex. Kompani 1">
+          <p style="font-size:0.85rem;color:#666">
+            Enhetsnamnet används tillsammans med ett tidsstämplat TNR och
+            rapporttyp i filnamnen för genererade rapporter, t.ex.:
+          </p>
+          <p class="mono" style="display:inline-block">{{ example_filename }}</p>
+
+          <div class="actions">
+            <button type="submit">Spara</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="settings-subsection">
+        <h4>Angränsande enheter</h4>
+        <p style="font-size:0.85rem;color:#666">
+          Namn på angränsande enheter, för referens på sammanställd
+          hotbedömning-sidan. En inkommande statusrapport identifieras
+          automatiskt utifrån enhetsnamnet i rapportens eget filnamn (t.ex.
+          <span class="mono">Kompani_2_301842_aterkommande.pdf</span> &rarr;
+          "Kompani_2") &mdash; ingen koppling till Signal-avsändare behövs här.
+        </p>
+
+        {% if adjacent_units %}
+          <table>
+            <thead><tr><th>Namn</th><th></th></tr></thead>
+            <tbody>
+              {% for unit in adjacent_units %}
+                <tr>
+                  <td>{{ unit.name }}</td>
+                  <td>
+                    <form method="post" action="{{ url_for('events.delete_adjacent_unit', unit_id=unit.id) }}" style="display:inline">
+                      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ta bort</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p style="color:#666">Inga angränsande enheter tillagda ännu.</p>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('events.add_adjacent_unit') }}">
+          <label for="adjacent_unit_name">Lägg till enhet</label>
+          <input type="text" id="adjacent_unit_name" name="name" placeholder="t.ex. Kompani 2">
+          <div class="actions">
+            <button type="submit">Lägg till</button>
+          </div>
+        </form>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <details id="settings-signalgrupper">
+      <summary><h3>Signalgrupper</h3></summary>
+
+      <div class="settings-subsection">
+        <p style="font-size:0.85rem;color:#666">
+          Namnen på de Signal-grupper appen använder. <strong>Bevakningsgrupp</strong>
+          är gruppen händelserapporter hämtas ifrån (<span class="mono">signal-events watch</span>/<span class="mono">sync</span>).
+          <strong>Rapportgrupp</strong> är dit genererade händelserapporter och
+          hotbedömningar skickas &mdash; samma grupp där angränsande enheters
+          statusrapporter tas emot ifrån. <strong>Återkommande-grupp</strong> är
+          dit listan över återkommande fordon/personer/observationer skickas.
+          <strong>Sensorgrupp</strong> är gruppen automatiska sensorutlösta
+          händelser hämtas ifrån &mdash; en sensorgateway rapporterar dit i
+          samma format som vanliga händelserapporter, så de tolkas och lagras
+          på exakt samma sätt och visas i den vanliga händelseloggen.
+          Ändringar här gäller direkt för knapparna i webbgränssnittet, men
+          kräver en omstart av <span class="mono">signal-events watch</span>/<span class="mono">serve --watch</span>
+          för att börja gälla för bakgrundsbevakningen.
+        </p>
+        <form method="post" action="{{ url_for('events.save_groups') }}">
+          <label for="watch_group">Bevakningsgrupp (hämtar händelser ifrån)</label>
+          <input type="text" id="watch_group" name="watch_group" value="{{ watch_group }}">
+
+          <label for="report_group">Rapportgrupp (skickar rapporter/hotbedömningar till)</label>
+          <input type="text" id="report_group" name="report_group" value="{{ report_group }}">
+
+          <label for="recurring_group">Återkommande-grupp (skickar listan över återkommande till)</label>
+          <input type="text" id="recurring_group" name="recurring_group" value="{{ recurring_group }}">
+
+          <label for="sensor_group">Sensorgrupp (hämtar automatiska sensorhändelser ifrån)</label>
+          <input type="text" id="sensor_group" name="sensor_group" value="{{ sensor_group }}">
+
+          <div class="actions">
+            <button type="submit">Spara Signal-grupper</button>
+          </div>
+        </form>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <details id="settings-karta">
+      <summary><h3>Kartinställningar</h3></summary>
+
+      <div class="settings-subsection">
+        <h4>Kartläge</h4>
+        <p style="font-size:0.85rem;color:#666">
+          <strong>Online</strong> hämtar varje kartruta direkt vid behov från
+          kartleverantören nedan (och cachar den lokalt i samma veva) -- kartorna
+          fungerar direkt, men kräver nätverk för allt som inte redan hämtats.
+          <strong>Lokal cache</strong> visar bara redan nedladdade kartrutor och
+          rör aldrig nätverket -- allt utanför en genomförd nedladdning visas
+          tomt. Nedladdningsknappen nedan fungerar i båda lägena, t.ex. för att
+          förbereda cachen innan ett läge utan uppkoppling.
+        </p>
+        <form method="post" action="{{ url_for('events.save_map_tile_mode') }}">
+          <div class="actions" style="gap:1rem;align-items:center">
+            <label style="display:inline-flex;align-items:center;gap:0.35rem;font-weight:normal">
+              <input type="radio" name="tile_mode" value="online" {{ "checked" if map_tile_mode == "online" }}>
+              Online
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:0.35rem;font-weight:normal">
+              <input type="radio" name="tile_mode" value="local" {{ "checked" if map_tile_mode == "local" }}>
+              Lokal cache
+            </label>
+            <button type="submit">Spara kartläge</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="settings-subsection">
+        <h4>Kartkälla</h4>
+        <p style="font-size:0.85rem;color:#666">
+          <strong>Lantmäteriets FTP</strong> (standard) hämtar kartrutor från
+          deras fria, öppna GeoPackage-fil (ingen API-nyckel, inget konto) via
+          GDAL -- men är mycket långsammare (uppmätt till ca 1,85 sekunder per
+          kartruta även vid batchning, dvs flera timmar för hela området) och
+          fungerar därför bara som engångsnedladdning: med denna källa visas
+          alltid enbart redan nedladdade kartrutor, oavsett Kartläge ovan.
+          Kräver att GDAL (<span class="mono">gdal_translate</span>) är
+          installerat separat, t.ex. med <span class="mono">brew install
+          gdal</span>. <strong>URL-baserad leverantör</strong> hämtar istället
+          kartrutor per styck från kartleverantören nedan, precis som
+          Online-läget ovan förutsätter -- kräver ingen GDAL, men behöver en
+          API-nyckel för de flesta leverantörer.
+        </p>
+        {% if not map_gdal_available %}
+          <p class="map-hint">
+            GDAL hittades inte på servern just nu -- Lantmäteriets FTP-källa
+            går att välja, men nedladdningen kommer att avvisas tills GDAL är
+            installerat.
+          </p>
+        {% endif %}
+        <form method="post" action="{{ url_for('events.save_map_tile_source') }}">
+          <div class="actions" style="gap:1rem;align-items:center">
+            <label style="display:inline-flex;align-items:center;gap:0.35rem;font-weight:normal">
+              <input type="radio" name="tile_source" value="url" {{ "checked" if map_tile_source == "url" }}>
+              URL-baserad leverantör
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:0.35rem;font-weight:normal">
+              <input type="radio" name="tile_source" value="lantmateriet_ftp" {{ "checked" if map_tile_source == "lantmateriet_ftp" }}>
+              Lantmäteriets FTP (GDAL)
+            </label>
+            <button type="submit">Spara kartkälla</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="settings-subsection">
+        <h4>Kartcentrum</h4>
+        <p style="font-size:0.85rem;color:#666">
+          Sätt en centerpunkt (latitud, longitud) för skyddsobjektets område.
+          Används av nedladdningsknappen nedan, som laddar ner och cachar
+          kartrutor lokalt för en radie på {{ map_cache_radius_km }} km runt
+          punkten (zoom {{ map_cache_min_zoom }}-{{ map_cache_max_zoom }}) --
+          i lokal-cache-läge är det de enda rutorna som visas; i online-läge
+          fylls cachen även på av sig själv vartefter kartorna visas.
+        </p>
+        <form method="post" action="{{ url_for('events.save_map_cache_area_size') }}">
+          <div class="actions" style="gap:1rem;align-items:center">
+            <label style="display:inline-flex;align-items:center;gap:0.35rem;font-weight:normal">
+              <input type="radio" name="area_size" value="small" {{ "checked" if map_cache_area_size == "small" }}>
+              Litet (1 x 1 km)
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:0.35rem;font-weight:normal">
+              <input type="radio" name="area_size" value="medium" {{ "checked" if map_cache_area_size == "medium" }}>
+              Mellan (10 x 10 km)
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:0.35rem;font-weight:normal">
+              <input type="radio" name="area_size" value="large" {{ "checked" if map_cache_area_size == "large" }}>
+              Stort (100 x 100 km)
+            </label>
+            <button type="submit">Spara områdesstorlek</button>
+          </div>
+        </form>
+        <form method="post" action="{{ url_for('events.save_map_center') }}">
+          <label for="map_lat">Latitud</label>
+          <input type="text" id="map_lat" name="lat"
+                 value="{{ '%.5f'|format(map_center[0]) if map_center else '' }}"
+                 placeholder="59.33000">
+
+          <label for="map_lon">Longitud</label>
+          <input type="text" id="map_lon" name="lon"
+                 value="{{ '%.5f'|format(map_center[1]) if map_center else '' }}"
+                 placeholder="18.06000">
+
+          <div class="actions">
+            <button type="submit">Spara kartcentrum</button>
+          </div>
+        </form>
+        {% if map_center %}
+          <p class="map-hint">
+            MGRS: {{ map_center_mgrs or "(kunde inte beräknas)" }}
+          </p>
+          <form method="post" action="{{ url_for('events.clear_map_center') }}" style="margin-top:0.5rem">
+            <button type="submit" class="btn-secondary">Rensa kartcentrum</button>
+          </form>
+
+          <p class="map-hint">
+            {{ map_cached_tiles }} av {{ map_expected_tiles }} kartrutor cachade.
+          </p>
+          <form method="post" action="{{ url_for('events.download_map_tiles') }}">
+            <div class="actions">
+              <button type="submit">Ladda ner kartor för området</button>
+            </div>
+          </form>
+          <p class="map-hint">
+            Om nedladdningen avbröts med en varning om att OpenStreetMap
+            blockerat fler förfrågningar (se Systemlogg) kan cachen innehålla
+            deras "blockerad"-bild istället för riktiga kartrutor -- använd
+            knappen nedan för att ta bort just de rutorna (riktiga kartrutor
+            påverkas inte).
+          </p>
+          <form method="post" action="{{ url_for('events.purge_blocked_map_tiles') }}">
+            <div class="actions">
+              <button type="submit" class="btn-secondary">Rensa blockerade kartrutor</button>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+
+      <div class="settings-subsection">
+        <h4>Kartleverantör</h4>
+        <p style="font-size:0.85rem;color:#666">
+          Gäller endast när Kartkälla ovan är satt till URL-baserad
+          leverantör.
+        </p>
+        <p style="font-size:0.85rem;color:#666">
+          Standardvalet pekar på Lantmäteriets fria, öppna karttjänst
+          ("topowebb-ccby" -- namnet är kvar sen ett produktbyte, men
+          licensen är faktiskt CC0, dvs fri användning utan krav på
+          attribuering). Skaffa ett Geotorget-konto på
+          <span class="mono">geotorget.lantmateriet.se</span>, ansök om att
+          bli konsument av Nationella geodataplattformen, och generera en
+          API-nyckel i API-portalen ("token i URL"-metoden, inte
+          OAuth2/Bearer-header-varianten). Klistra in nyckeln i webbadressen
+          nedan. Innan en riktig nyckel klistrats in fungerar inga kartrutor
+          (samma synliga effekt som OpenStreetMaps blockering gav tidigare,
+          men av ett tydligt skäl: inget att felsöka, bara en nyckel att
+          fylla i).
+        </p>
+        <p style="font-size:0.85rem;color:#666">
+          För kartor utanför Sverige, eller om du redan har ett konto hos en
+          annan leverantör som tillåter cachning för offline-bruk (t.ex.
+          MapTiler, Stadia Maps eller Thunderforest), klistra in den
+          kart-URL:en istället, inklusive din API-nyckel. Måste innehålla
+          platshållarna <span class="mono">{z}</span>,
+          <span class="mono">{x}</span> och <span class="mono">{y}</span> --
+          se README för OpenStreetMaps blockeringspolicy om du överväger
+          deras publika server ändå.
+        </p>
+        <form method="post" action="{{ url_for('events.save_map_tile_url') }}">
+          <label for="tile_url_template">Kart-URL</label>
+          <input type="text" id="tile_url_template" name="tile_url_template"
+                 value="{{ '' if map_tile_url_is_default else map_tile_url_template }}"
+                 placeholder="https://api.lantmateriet.se/open/topowebb-ccby/v1/wmts/token/DIN_TOKEN/1.0.0/topowebb/default/3857/{z}/{y}/{x}.png">
+
+          <div class="actions">
+            <button type="submit">Spara kartleverantör</button>
+          </div>
+        </form>
+        <p class="map-hint">
+          {% if map_tile_url_is_default %}
+            Använder just nu standardvalet: {{ map_tile_url_template }}
+          {% else %}
+            Använder just nu: {{ map_tile_url_template }}
+          {% endif %}
+          Lämna fältet tomt och spara för att återställa till standardvalet.
+        </p>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <details id="settings-ai">
+      <summary><h3>AI-inställningar</h3></summary>
+
+      <div class="settings-subsection">
+        <h4>Ollama-port</h4>
+        <p style="font-size:0.85rem;color:#666">
+          Porten den lokala Ollama-servern nås på (AI-analys-chatten och
+          <span class="mono">--llm</span>-flaggan i CLI:t). Ändra den här om du
+          kör <span class="mono">ollama serve</span> på en annan port än
+          standard. Gäller direkt, ingen omstart krävs.
+        </p>
+        <form method="post" action="{{ url_for('events.save_ollama_port') }}">
+          <label for="ollama_port">Port</label>
+          <input type="text" id="ollama_port" name="ollama_port" value="{{ ollama_port }}" inputmode="numeric" pattern="[0-9]*">
+
+          <div class="actions">
+            <button type="submit">Spara Ollama-port</button>
+          </div>
+        </form>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <details id="settings-anvandare" open>
+      <summary><h3>Lokala användare</h3></summary>
+
+      <div class="settings-subsection">
+        <h4>Ytterligare användare</h4>
+        <p style="font-size:0.85rem;color:#666">
+          Konton för gäster som ansluter till webbgränssnittet från samma
+          WiFi/LAN som datorn som kör appen (t.ex. via
+          <span class="mono">192.168.1.23:5000</span> i webbläsaren, inte
+          <span class="mono">localhost</span>). De loggar in med namn och
+          lösenord och kan granska/lägga till händelser och se
+          rapporter/hotbedömningar, men når varken Inställningar eller Demo
+          och övning &mdash; det märket ser bara du, inloggad på den här
+          datorn. Kräver att servern startas med <span class="mono">--host 0.0.0.0</span>
+          (eller en LAN-synlig adress); med standardinställningen
+          <span class="mono">127.0.0.1</span> är webbgränssnittet bara nåbart
+          från den här datorn, och den här sektionen behövs inte alls.
+        </p>
+
+        {% if users %}
+          <table>
+            <thead><tr><th>Namn</th><th>Skapad</th><th></th></tr></thead>
+            <tbody>
+              {% for user in users %}
+                <tr>
+                  <td>{{ user.name }}</td>
+                  <td>{{ user.created_at }}</td>
+                  <td>
+                    <form method="post" action="{{ url_for('events.delete_user', user_id=user.id) }}" style="display:inline">
+                      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Ta bort</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p style="color:#666">Inga ytterligare användare tillagda ännu.</p>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('events.create_user') }}">
+          <label for="new_user_name">Namn</label>
+          <input type="text" id="new_user_name" name="name" placeholder="t.ex. Vakt Andersson">
+          <label for="new_user_password">Lösenord</label>
+          <input type="password" id="new_user_password" name="password">
+          <div class="actions">
+            <button type="submit">Lägg till användare</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="settings-subsection">
+        <h4>Dela adress med gäster</h4>
+        {% if lan_url %}
+          <p style="font-size:0.85rem;color:#666">
+            Låt en gäst skanna koden med sin telefonkamera för att öppna
+            inloggningssidan direkt, i stället för att skriva in adressen för
+            hand. Fungerar bara om gästens enhet är ansluten till samma
+            WiFi/LAN som den här datorn.
+          </p>
+          <img src="{{ url_for('events.lan_qrcode') }}" alt="QR-kod till {{ lan_url }}"
+               width="200" height="200" style="display:block">
+          <p class="mono" style="font-size:0.8rem">{{ lan_url }}</p>
+        {% else %}
+          <p style="font-size:0.85rem;color:#666">
+            Servern är just nu bara nåbar från den här datorn
+            (<span class="mono">127.0.0.1</span>). Starta om med
+            <span class="mono">signal-events serve --host 0.0.0.0</span> för
+            att göra den nåbar &mdash; och den här QR-koden användbar &mdash;
+            för andra enheter på samma WiFi/LAN.
+          </p>
+        {% endif %}
+      </div>
+    </details>
   </div>
 {% endblock %}
