@@ -866,6 +866,61 @@ def test_list_events_with_position_filters_by_since():
         assert {r["id"] for r in rows} == {old_event, new_event}
 
 
+def test_insert_event_stores_source_unit_when_provided():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9006, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db.insert_event(
+            conn, message_id=message_id, fields={"place": "Kajen", "source_unit": "2.Pluton"}
+        )
+        event = db.get_event(conn, event_id)
+        assert event["source_unit"] == "2.Pluton"
+
+
+def test_insert_event_defaults_source_unit_to_none():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9007, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db.insert_event(conn, message_id=message_id, fields={"place": "Kajen"})
+        event = db.get_event(conn, event_id)
+        assert event["source_unit"] is None
+
+
+def test_update_event_can_set_source_unit():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9008, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db.insert_event(conn, message_id=message_id, fields={"place": "Kajen"})
+
+        db.update_event(conn, event_id, {"source_unit": "3.Kompani"})
+        event = db.get_event(conn, event_id)
+        assert event["source_unit"] == "3.Kompani"
+
+
+def test_list_events_own_only_excludes_events_with_a_source_unit():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9009, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        own_id = db.insert_event(conn, message_id=message_id, fields={"place": "Egen"})
+        db.insert_event(
+            conn, message_id=message_id, fields={"place": "Angränsande", "source_unit": "2.Pluton"}
+        )
+
+        rows = db.list_events(conn, own_only=True)
+        assert [r["id"] for r in rows] == [own_id]
+
+        rows = db.list_events(conn)
+        assert len(rows) == 2
+
+
 def test_list_events_with_position_include_adjacent_false_excludes_adjacent_events():
     with db.get_connection() as conn:
         message_id = db.insert_message(

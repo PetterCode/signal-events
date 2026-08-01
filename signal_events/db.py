@@ -384,7 +384,16 @@ def list_events(
     since: Optional[str] = None,
     needs_review: Optional[bool] = None,
     is_trivial: Optional[bool] = None,
+    own_only: bool = False,
 ) -> list[sqlite3.Row]:
+    """`own_only=True` excludes events with a source_unit set -- i.e.
+    ones logged as received from an angränsande enhet rather than this
+    unit's own reporters (see insert_event). Used at every choke point
+    that feeds this unit's own threat analysis or generated reports
+    (_compute_summary, report()/report_send(), the CLI equivalents) so
+    another unit's sightings never silently inflate this unit's own
+    picture; left False (the default) everywhere display-only, like
+    Tidslinje, so both are still visible there, just labeled."""
     query = "SELECT * FROM events WHERE 1=1"
     params: list[Any] = []
     if since is not None:
@@ -396,6 +405,8 @@ def list_events(
     if is_trivial is not None:
         query += " AND is_trivial = ?"
         params.append(1 if is_trivial else 0)
+    if own_only:
+        query += " AND source_unit IS NULL"
     query += " ORDER BY created_at DESC"
     return conn.execute(query, params).fetchall()
 

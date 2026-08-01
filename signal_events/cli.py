@@ -215,7 +215,9 @@ def cmd_report(args: argparse.Namespace) -> None:
     db.init_db()
     with db.get_connection() as conn:
         needs_review = None if args.include_unreviewed else False
-        events = db.list_events(conn, since=_since_iso(args.since), needs_review=needs_review)
+        events = db.list_events(
+            conn, since=_since_iso(args.since), needs_review=needs_review, own_only=True
+        )
         trivial_ids = triviality.classify_trivial_events(conn, events)
         unit_name = db.get_unit_name(conn)
         rows = []
@@ -246,7 +248,9 @@ def cmd_summary(args: argparse.Namespace) -> None:
     db.init_db()
     with db.get_connection() as conn:
         needs_review = None if args.include_unreviewed else False
-        events = db.list_events(conn, since=_since_iso(args.since), needs_review=needs_review)
+        events = db.list_events(
+            conn, since=_since_iso(args.since), needs_review=needs_review, own_only=True
+        )
         duplicate_ids = duplicates.classify_duplicate_events(conn, events)
         events = [e for e in events if e["id"] not in duplicate_ids]
         summary_data = analysis.build_summary(events, period_label=args.since)

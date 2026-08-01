@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Händelse från angränsande enhet{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('events.list_events') }}">&larr; Tillbaka till händelser</a></p>
+  <h1>Lägg till händelse från angränsande enhet</h1>
+
+  <div class="card">
+    <p style="font-size:0.85rem;color:#666">
+      Använd detta när en angränsande enhet meddelar en egen observation
+      (telefon, radio, personligen) som är värd att spara här också.
+      Händelsen sparas separat från denna enhets egna -- den räknas inte
+      med i denna enhets hotbedömning eller genererade rapporter, men
+      syns i Tidslinjen och kan visas eller döljas i Kart-vy.
+    </p>
+    <form method="post" enctype="multipart/form-data">
+      <label for="source_unit">Angränsande enhet</label>
+      <input type="text" id="source_unit" name="source_unit" list="adjacent-unit-names" required
+             placeholder="t.ex. 2.Pluton">
+      <datalist id="adjacent-unit-names">
+        {% for unit in adjacent_units %}
+          <option value="{{ unit.name }}">
+        {% endfor %}
+      </datalist>
+
+      <label for="event_time">Tid</label>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <input type="text" id="event_time" name="event_time" placeholder="t.ex. 011430 (dag-timme-minut) eller 14:30" style="width:auto;flex:1">
+        <button type="button" id="event-time-now-btn" class="btn-secondary">Nu</button>
+      </div>
+
+      <label for="place">Plats</label>
+      <input type="text" id="place" name="place">
+
+      <label for="count">Antal observerade objekt</label>
+      <input type="text" id="count" name="count">
+
+      <label for="object">Observerat objekt</label>
+      <input type="text" id="object" name="object">
+
+      <label for="activity">Aktivitet</label>
+      <input type="text" id="activity" name="activity">
+
+      <label for="marks">Kännetecken</label>
+      <input type="text" id="marks" name="marks">
+
+      <label for="reported_by">Rapporterad av</label>
+      <input type="text" id="reported_by" name="reported_by">
+
+      <label for="next_steps">Vad händer härnäst</label>
+      <textarea id="next_steps" name="next_steps"></textarea>
+
+      <label for="notes">Anteckningar (fritext, valfritt)</label>
+      <textarea id="notes" name="notes" placeholder="Eventuella ytterligare detaljer värda att spara ordagrant"></textarea>
+
+      <label for="photos">Foton</label>
+      <input type="file" id="photos" name="photos" accept="image/*" multiple>
+
+      <label>Position</label>
+      <p class="map-hint">Ingen position angiven &mdash; klicka i kartan för att sätta en.</p>
+      <div id="new-event-map" class="map-container"></div>
+      <input type="hidden" name="lat" id="position-lat" value="">
+      <input type="hidden" name="lon" id="position-lon" value="">
+      <p class="map-hint">
+        Klicka i kartan för att placera positionen (frivilligt) &mdash; det vinner
+        alltid över en koordinat (MGRS, decimalgrader, grader/minuter/sekunder
+        eller grader/decimalminuter) som skrivits in i Plats eller Anteckningar
+        ovan.
+      </p>
+
+      <label>
+        <input type="checkbox" name="mark_reviewed" checked
+               style="width:auto;display:inline;vertical-align:middle">
+        Markera som granskad
+      </label>
+
+      <div class="actions">
+        <button type="submit">Spara händelse</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+  <script>
+    (function () {
+      var latInput = document.getElementById("position-lat");
+      var lonInput = document.getElementById("position-lon");
+      var hasCenter = {{ "true" if map_has_center else "false" }};
+      var minZoom = {{ map_min_zoom }};
+      var maxZoom = {{ map_max_zoom }};
+      var startLat = {{ map_fallback_lat }};
+      var startLon = {{ map_fallback_lon }};
+      var startZoom = hasCenter ? 10 : 5;
+
+      var map = L.map("new-event-map", { minZoom: minZoom }).setView([startLat, startLon], startZoom);
+      L.tileLayer("/tiles/{z}/{x}/{y}.png", {
+        minZoom: minZoom,
+        maxZoom: maxZoom,
+        attribution: "Kartkälla: se Inställningar &rarr; Kartleverantör",
+      }).addTo(map);
+
+      if (hasCenter) {
+        L.circleMarker([startLat, startLon], {
+          radius: 9, color: "#c0392b", weight: 2, fillColor: "#e74c3c", fillOpacity: 0.85,
+        }).bindPopup("Kartcentrum (Inställningar)").addTo(map);
+      }
+
+      var marker = null;
+      map.on("click", function (e) {
+        latInput.value = e.latlng.lat.toFixed(6);
+        lonInput.value = e.latlng.lng.toFixed(6);
+        if (marker) {
+          marker.setLatLng(e.latlng);
+        } else {
+          marker = L.marker(e.latlng).addTo(map);
+        }
+      });
+    })();
+  </script>
+  <script>
+    document.getElementById("event-time-now-btn").addEventListener("click", function () {
+      // Day-hour-minute, the same "Stund"/TNR date-time-group format
+      // used everywhere else an event's time is shown (naming.py's
+      // generate_tnr) -- filling that directly, not just a clock time,
+      // means the event's own TNR reflects when it actually happened
+      // instead of falling back to when it was typed in.
+      var now = new Date();
+      var dd = String(now.getDate()).padStart(2, "0");
+      var hh = String(now.getHours()).padStart(2, "0");
+      var mm = String(now.getMinutes()).padStart(2, "0");
+      document.getElementById("event_time").value = dd + hh + mm;
+    });
+  </script>
+{% endblock %}

@@ -897,13 +897,58 @@ def list_events():
 
 @bp.route("/events/new", methods=["GET", "POST"])
 def new_event():
+    return _new_event_view(adjacent=False)
+
+
+@bp.route("/events/new-adjacent", methods=["GET", "POST"])
+def new_adjacent_event():
+    """Same manual-entry flow as new_event, but for logging an event
+    received *from* an angränsande enhet (phone call, radio, a status
+    report that mentioned a specific sighting) rather than one of this
+    unit's own reports -- the resulting event is tagged with
+    source_unit so it's tracked separately: shown but excluded from this
+    unit's own threat analysis and generated reports (db.list_events'
+    own_only), and toggleable on Karta."""
+    return _new_event_view(adjacent=True)
+
+
+def _new_event_view(*, adjacent: bool):
+    template = "event_form_adjacent.html" if adjacent else "event_form.html"
     if request.method == "GET":
-        return render_template("event_form.html")
+        with db.get_connection() as conn:
+            map_center = db.get_map_center(conn)
+            adjacent_units = db.list_adjacent_units(conn) if adjacent else []
+        fallback_lat, fallback_lon = map_center or config.DEFAULT_MAP_CENTER
+        return render_template(
+            template, map_has_center=map_center is not None,
+            map_fallback_lat=fallback_lat, map_fallback_lon=fallback_lon,
+            map_min_zoom=config.MAP_CACHE_MIN_ZOOM,
+            map_max_zoom=config.MAP_CACHE_MAX_ZOOM,
+            adjacent_units=adjacent_units,
+        )
 
     fields = _field_form_values()
     notes = request.form.get("notes", "").strip()
     fields["raw_text"] = notes or None
     fields["needs_review"] = 0 if request.form.get("mark_reviewed") else 1
+
+    if adjacent:
+        source_unit = request.form.get("source_unit", "").strip()
+        if not source_unit:
+            flash("Ange vilken angränsande enhet händelsen kommer från.", "error")
+            return redirect(url_for("events.new_adjacent_event"))
+        fields["source_unit"] = source_unit
+
+    position = _position_form_values()
+    if position:
+        fields.update(position)
+    else:
+        # No pin dropped -- fall back to the same auto-extraction a
+        # Signal-ingested report gets, in case the place/notes text
+        # happens to contain a position (MGRS or otherwise) typed by hand.
+        latlon = coordinates.extract_position(fields.get("place")) or coordinates.extract_position(notes)
+        if latlon is not None:
+            fields["lat"], fields["lon"] = latlon
 
     with db.get_connection() as conn:
         # No Signal message backs a manually entered report, so we create a
@@ -916,7 +961,7 @@ def new_event():
             sender_number=None,
             sender_name=fields["reported_by"],
             body=notes,
-            raw_json=json.dumps({"source": "manual"}),
+            raw_json=json.dumps({"source": "manual_adjacent" if adjacent else "manual"}),
         )
         _save_uploaded_photos(conn, message_id)
         event_id = db.insert_event(conn, message_id=message_id, fields=fields)
@@ -1240,7 +1285,11 @@ def report():
 
     with db.get_connection() as conn:
         needs_review = None if include_unreviewed else False
-        events = db.list_events(conn, since=_since_iso(preset), needs_review=needs_review)
+        # own_only=True: a generated report is this unit's own account --
+        # events received from an angränsande enhet stay out of it.
+        events = db.list_events(
+            conn, since=_since_iso(preset), needs_review=needs_review, own_only=True
+        )
         trivial_ids = triviality.classify_trivial_events(conn, events)
         rows = []
         for event in events:
@@ -1293,7 +1342,11 @@ def report_send():
 
     with db.get_connection() as conn:
         needs_review = None if include_unreviewed else False
-        events = db.list_events(conn, since=_since_iso(preset), needs_review=needs_review)
+        # own_only=True: a generated report is this unit's own account --
+        # events received from an angränsande enhet stay out of it.
+        events = db.list_events(
+            conn, since=_since_iso(preset), needs_review=needs_review, own_only=True
+        )
         trivial_ids = triviality.classify_trivial_events(conn, events)
         rows = []
         for event in events:
@@ -1323,10 +1376,15 @@ def _compute_summary(preset: str, include_unreviewed: bool) -> analysis.Summary:
     """The single choke point every summary view/export/send goes
     through (including the header status strip's inject_header_status),
     so a human-set threat-level override (see db.get_threat_override)
-    only needs to be applied here to reach all of them consistently."""
+    only needs to be applied here to reach all of them consistently.
+    own_only=True: events received from an angränsande enhet (see
+    events.new_adjacent_event) never feed this unit's own threat
+    assessment, the same way they're kept out of generated reports."""
     with db.get_connection() as conn:
         needs_review = None if include_unreviewed else False
-        events = db.list_events(conn, since=_since_iso(preset), needs_review=needs_review)
+        events = db.list_events(
+            conn, since=_since_iso(preset), needs_review=needs_review, own_only=True
+        )
         duplicate_ids = duplicates.classify_duplicate_events(conn, events)
         events = [e for e in events if e["id"] not in duplicate_ids]
         summary_data = analysis.build_summary(events, period_label=preset)
