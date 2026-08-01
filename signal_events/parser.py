@@ -8,7 +8,18 @@ Messages written in the Swedish military "7S rapport" template (labeled
 lines: Till/Från/TNR/Stund/Ställe/Styrka/Slag/Sysselsättning/Symbol/
 Reg.Nr/Sagesman/Sedan) are recognized and mapped directly instead of going
 through the generic heuristics, since the labels already tell us exactly
-which field is which.
+which field is which. Some report-generating tools (e.g. 7srapport.com,
+confirmed by generating a real sample) combine Styrka/Slag/Sysselsättning
+into one free-text "Händelse" field instead -- that's recognized too, with
+count/object/activity recovered from it via the same best-effort heuristics
+the non-7S path below uses. A field's value is also treated as absent if
+it's a lone "-", since some tools emit that for a blank optional field
+rather than omitting the line.
+
+If an MGRS grid reference (e.g. "33VVN1234567890") appears in the Ställe
+field or the message body, it's converted to lat/lon via coordinates.py and
+stored alongside the other fields -- see that module for details. A human
+can always override this by pin-dropping a position on the event page.
 """
 
 from __future__ import annotations
@@ -16,9 +27,11 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from .coordinates import extract_position
+
 _7S_LABELS = [
     "Till", "Från", "TNR", "Stund", "Ställe", "Styrka", "Slag",
-    "Sysselsättning", "Symbol", "Reg.Nr", "Sagesman", "Sedan",
+    "Sysselsättning", "Händelse", "Symbol", "Reg.Nr", "Sagesman", "Sedan",
 ]
 _7S_LINE_RE = re.compile(
     r"^\s*(" + "|".join(re.escape(label) for label in _7S_LABELS) + r")\s*:\s*(.+?)\s*$",
@@ -31,7 +44,15 @@ def _extract_7s_labels(text: str) -> Optional[dict[str, str]]:
     found: dict[str, str] = {}
     for match in _7S_LINE_RE.finditer(text):
         canonical = next(l for l in _7S_LABELS if l.lower() == match.group(1).lower())
-        found[canonical] = match.group(2).strip()
+        value = match.group(2).strip()
+        # A lone "-" marks a field the sender left blank (e.g. 7srapport.com
+        # emits "Sedan: -" for its optional field rather than omitting the
+        # line) -- treat that as not actually present, both so callers see
+        # None instead of a literal dash, and so a report with only blank
+        # optional fields filled in doesn't count towards
+        # _7S_MIN_LABELS_MATCHED.
+        if value and value != "-":
+            found[canonical] = value
     if len(found) < _7S_MIN_LABELS_MATCHED:
         return None
     return found
@@ -44,14 +65,37 @@ def _map_7s_fields(labels: dict[str, str], reported_by: Optional[str]) -> dict:
             f"Reg.nr {labels['Reg.Nr']}" if labels.get("Reg.Nr") else None,
         ] if p
     ]
+    count, obj, activity = labels.get("Styrka"), labels.get("Slag"), labels.get("Sysselsättning")
+    handelse = labels.get("Händelse")
+    if handelse and not (count or obj or activity):
+        # Some 7S-generating tools (e.g. 7srapport.com) combine the three
+        # S:en -- Styrka/Slag/Sysselsättning -- into one free-text
+        # "Händelse" field instead of three separate labeled lines, since
+        # reliably splitting a natural sentence into those three parts
+        # isn't something a human writer can be expected to do either.
+        # Recover count/object/activity from it with the same best-effort
+        # heuristics the plain (non-7S) fallback path already uses below,
+        # rather than silently losing the actual substance of the report.
+        heuristic_count, heuristic_object = extract_count_and_object(handelse)
+        count, obj = count or heuristic_count, obj or heuristic_object
+        activity = activity or extract_activity(handelse) or handelse
     return {
         "event_time": labels.get("Stund"),
         "place": labels.get("Ställe"),
-        "count": labels.get("Styrka"),
-        "object": labels.get("Slag"),
-        "activity": labels.get("Sysselsättning"),
+        "count": count,
+        "object": obj,
+        "activity": activity,
         "marks": ", ".join(marks_parts) or None,
-        "reported_by": labels.get("Från") or reported_by,
+        # "Sagesman" (informant/source) is who actually observed and is
+        # vouching for the report -- what "Rapporterad av" is meant to
+        # capture -- which can genuinely differ from "Från" (who relayed
+        # this particular Signal message, e.g. a duty officer passing on
+        # someone else's account) or from the Signal sender (whoever's
+        # phone/account it was sent from). Prefer it when the message
+        # actually names one; "Från" is still a message-content value
+        # worth falling back to if Sagesman is missing, before finally
+        # falling back to the Signal sender itself.
+        "reported_by": labels.get("Sagesman") or labels.get("Från") or reported_by,
         "next_steps": labels.get("Sedan"),
         "needs_review": True,
     }
@@ -87,7 +131,12 @@ _PLACE_RE = re.compile(
 _COUNT_OBJECT_RE = re.compile(
     r"(?<![:.\d])\b"
     r"(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|dozen|several|few|multiple)\s+"
-    r"([a-z]+(?:-[a-z]+)?)",
+    # [A-Za-zÅÄÖåäö], not [a-z] -- otherwise a Swedish word starting with
+    # å/ä/ö, or containing one (t.ex. "grå", "skåpbil"), gets silently
+    # truncated at the first non-ASCII letter (a real bug hit importing a
+    # 7srapport.com-style report with "1 grå skåpbil ..." -- came back as
+    # object "gr" instead of "grå").
+    r"([A-Za-zÅÄÖåäö]+(?:-[A-Za-zÅÄÖåäö]+)?)",
     re.IGNORECASE,
 )
 
@@ -189,21 +238,31 @@ def extract_next_steps(text: str) -> Optional[str]:
 
 
 def parse_event_fields(text: str, reported_by: Optional[str] = None) -> dict:
-    """Extract the 8 report elements from free text. `reported_by` normally
-    comes from the Signal message sender, not the body text, since people
-    rarely name themselves in the report body."""
+    """Extract the 8 report elements from free text. For a 7S-labeled
+    message, "Rapporterad av" prefers whoever the message itself names as
+    "Sagesman" (or "Från" if that's all it gives), since the report body
+    is the more specific, authoritative source for who's actually vouching
+    for it -- `reported_by` (normally the Signal message sender) is only
+    the fallback for when the message doesn't say. For anything that
+    doesn't match the 7S template, there's no reliable field to read this
+    from, so it's always just `reported_by`, since people rarely name
+    themselves in ordinary free-text report bodies."""
     text = text or ""
 
     labels = _extract_7s_labels(text)
     if labels is not None:
         fields = _map_7s_fields(labels, reported_by)
         fields["raw_text"] = text
+        latlon = extract_position(labels.get("Ställe")) or extract_position(text)
+        if latlon is not None:
+            fields["lat"], fields["lon"] = latlon
         return fields
 
     count, obj = extract_count_and_object(text)
-    return {
+    place = extract_place(text)
+    fields = {
         "event_time": extract_time(text),
-        "place": extract_place(text),
+        "place": place,
         "count": count,
         "object": obj,
         "activity": extract_activity(text),
@@ -213,3 +272,7 @@ def parse_event_fields(text: str, reported_by: Optional[str] = None) -> dict:
         "raw_text": text,
         "needs_review": True,
     }
+    latlon = extract_position(place) or extract_position(text)
+    if latlon is not None:
+        fields["lat"], fields["lon"] = latlon
+    return fields

@@ -1,8 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Händelse {{ event_tnr(event.event_time, event.created_at) }}{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+{% endblock %}
 {% block content %}
   <p><a href="{{ url_for('events.list_events') }}">&larr; Tillbaka till händelser</a></p>
   <h1>Händelse {{ event_tnr(event.event_time, event.created_at) }}</h1>
+  {% if event.source_unit %}
+    <p class="badge badge-adjacent">
+      Från angränsande enhet: {{ event.source_unit }} &mdash; ingår inte i
+      denna enhets egen hotbedömning eller genererade rapporter.
+    </p>
+  {% endif %}
   {% if event.is_duplicate %}
     <p class="badge badge-trivial">
       Dublett &mdash; matchar en tidigare händelse med samma plats, objekt och
@@ -12,7 +21,7 @@
 
   <div class="card">
     <h3>
-      {% if source == "manual" %}Anteckningar
+      {% if source in ("manual", "manual_adjacent") %}Anteckningar
       {% elif source == "file_import" %}Importerad text
       {% else %}Originalmeddelande
       {% endif %}
@@ -46,7 +55,10 @@
     {% endif %}
     <form method="post" enctype="multipart/form-data">
       <label for="event_time">Tid</label>
-      <input type="text" id="event_time" name="event_time" value="{{ event.event_time or '' }}">
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <input type="text" id="event_time" name="event_time" value="{{ event.event_time or '' }}" style="width:auto;flex:1">
+        <button type="button" id="event-time-now-btn" class="btn-secondary">Nu</button>
+      </div>
 
       <label for="place">Plats</label>
       <input type="text" id="place" name="place" value="{{ event.place or '' }}">
@@ -71,6 +83,38 @@
 
       <label for="photos">Lägg till foton</label>
       <input type="file" id="photos" name="photos" accept="image/*" multiple>
+
+      <label>Position</label>
+      {% if event.lat and event.lon %}
+        <p class="map-hint">
+          Nuvarande position: {{ "%.5f"|format(event.lat) }}, {{ "%.5f"|format(event.lon) }}
+        </p>
+      {% else %}
+        <p class="map-hint">Ingen position angiven &mdash; klicka i kartan för att sätta en.</p>
+      {% endif %}
+      {% if map_position_outside_cache %}
+        <p class="map-hint">
+          Positionen ligger utanför det nedladdade kartområdet runt
+          Kartcentrum (Inställningar) &mdash; kartrutorna nedan visas därför
+          tomma/gråa tills antingen positionen rättas eller Kartcentrum och
+          området laddas ner på nytt så det täcker denna plats.
+        </p>
+      {% endif %}
+      <div class="actions">
+        <button type="button" id="map-fullscreen-btn" class="btn-secondary">Helskärm</button>
+      </div>
+      <div id="event-map" class="map-container"></div>
+      <input type="hidden" name="lat" id="position-lat" value="{{ event.lat or '' }}">
+      <input type="hidden" name="lon" id="position-lon" value="{{ event.lon or '' }}">
+      <p class="map-hint">
+        Klicka i kartan för att placera eller flytta positionen &mdash; det vinner
+        alltid över en position som extraherats automatiskt ur en koordinat
+        (MGRS, decimalgrader, grader/minuter/sekunder eller grader/decimalminuter)
+        i rapporten. "Spara" nedan sparar även positionen.
+      </p>
+      {% if event.lat and event.lon %}
+        <button type="submit" name="clear_position" value="1" class="btn-secondary">Ta bort position</button>
+      {% endif %}
 
       <label>
         <input type="checkbox" name="mark_reviewed" {{ 'checked' if not event.needs_review else '' }}
@@ -113,4 +157,75 @@
       </div>
     </form>
   </div>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+  <script>
+    (function () {
+      var latInput = document.getElementById("position-lat");
+      var lonInput = document.getElementById("position-lon");
+      var hasPosition = latInput.value !== "" && lonInput.value !== "";
+      var fallbackLat = {{ map_fallback_lat }};
+      var fallbackLon = {{ map_fallback_lon }};
+      var hasCenter = {{ "true" if map_has_center else "false" }};
+      var minZoom = {{ map_min_zoom }};
+      var maxZoom = {{ map_max_zoom }};
+      var startLat = hasPosition ? parseFloat(latInput.value) : fallbackLat;
+      var startLon = hasPosition ? parseFloat(lonInput.value) : fallbackLon;
+      var startZoom = hasPosition ? maxZoom : (hasCenter ? 10 : 5);
+
+      var map = L.map("event-map", { minZoom: minZoom }).setView([startLat, startLon], startZoom);
+      L.tileLayer("/tiles/{z}/{x}/{y}.png", {
+        minZoom: minZoom,
+        maxZoom: maxZoom,
+        attribution: "Kartkälla: se Inställningar &rarr; Kartleverantör",
+      }).addTo(map);
+
+      if (hasCenter) {
+        L.circleMarker([fallbackLat, fallbackLon], {
+          radius: 9, color: "#c0392b", weight: 2, fillColor: "#e74c3c", fillOpacity: 0.85,
+        }).bindPopup("Kartcentrum (Inställningar)").addTo(map);
+      }
+
+      var marker = hasPosition ? L.marker([startLat, startLon]).addTo(map) : null;
+
+      map.on("click", function (e) {
+        latInput.value = e.latlng.lat.toFixed(6);
+        lonInput.value = e.latlng.lng.toFixed(6);
+        if (marker) {
+          marker.setLatLng(e.latlng);
+        } else {
+          marker = L.marker(e.latlng).addTo(map);
+        }
+      });
+
+      var mapEl = document.getElementById("event-map");
+      var fullscreenBtn = document.getElementById("map-fullscreen-btn");
+      fullscreenBtn.addEventListener("click", function () {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          mapEl.requestFullscreen();
+        }
+      });
+      document.addEventListener("fullscreenchange", function () {
+        fullscreenBtn.textContent = document.fullscreenElement ? "Avsluta helskärm" : "Helskärm";
+        setTimeout(function () { map.invalidateSize(); }, 100);
+      });
+    })();
+  </script>
+  <script>
+    document.getElementById("event-time-now-btn").addEventListener("click", function () {
+      // Day-hour-minute, the same "Stund"/TNR date-time-group format
+      // used everywhere else an event's time is shown (naming.py's
+      // generate_tnr) -- filling that directly, not just a clock time,
+      // means the event's own TNR reflects when it actually happened
+      // instead of falling back to when it was typed in.
+      var now = new Date();
+      var dd = String(now.getDate()).padStart(2, "0");
+      var hh = String(now.getHours()).padStart(2, "0");
+      var mm = String(now.getMinutes()).padStart(2, "0");
+      document.getElementById("event_time").value = dd + hh + mm;
+    });
+  </script>
 {% endblock %}

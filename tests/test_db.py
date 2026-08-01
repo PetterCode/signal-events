@@ -592,6 +592,98 @@ def test_delete_event_keeps_message_and_attachments_when_another_event_still_ref
         assert len(db.list_attachments_for_message(conn, message_id)) == 1
 
 
+def test_insert_event_stores_lat_lon_when_provided():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9001, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "33VWE 18190 99510", "lat": 58.6355, "lon": 15.3133},
+        )
+        event = db.get_event(conn, event_id)
+        assert event["lat"] == pytest.approx(58.6355)
+        assert event["lon"] == pytest.approx(15.3133)
+
+
+def test_insert_event_defaults_lat_lon_to_none():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9002, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db.insert_event(conn, message_id=message_id, fields={"place": "Norra grinden"})
+        event = db.get_event(conn, event_id)
+        assert event["lat"] is None
+        assert event["lon"] is None
+
+
+def test_update_event_can_set_and_clear_lat_lon():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9003, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db.insert_event(conn, message_id=message_id, fields={"place": "Kajen"})
+
+        db.update_event(conn, event_id, {"lat": 58.6, "lon": 15.3})
+        event = db.get_event(conn, event_id)
+        assert event["lat"] == pytest.approx(58.6)
+        assert event["lon"] == pytest.approx(15.3)
+
+        db.update_event(conn, event_id, {"lat": None, "lon": None})
+        event = db.get_event(conn, event_id)
+        assert event["lat"] is None
+        assert event["lon"] is None
+
+
+def test_migrate_add_lat_lon_columns_is_idempotent_on_an_old_schema(tmp_path, monkeypatch):
+    """Simulates a database created before lat/lon existed to confirm
+    init_db() upgrades it in place without losing existing rows -- same
+    reasoning as the is_trivial migration test above."""
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "old.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "ATTACHMENTS_DIR", tmp_path / "attachments")
+
+    old_conn = sqlite3.connect(config.DB_PATH)
+    old_conn.executescript("""
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_timestamp INTEGER NOT NULL UNIQUE,
+            sender_number TEXT, sender_name TEXT, body TEXT,
+            raw_json TEXT, received_at TEXT NOT NULL
+        );
+        CREATE TABLE events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id INTEGER NOT NULL REFERENCES messages(id),
+            event_time TEXT, place TEXT, count TEXT, object TEXT,
+            activity TEXT, marks TEXT, reported_by TEXT, next_steps TEXT,
+            raw_text TEXT, needs_review INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+    """)
+    old_conn.execute(
+        "INSERT INTO messages (signal_timestamp, received_at) VALUES (1, 'now')"
+    )
+    old_conn.execute(
+        "INSERT INTO events (message_id, place, needs_review, created_at, updated_at) "
+        "VALUES (1, 'Pre-existing place', 0, 'now', 'now')"
+    )
+    old_conn.commit()
+    old_conn.close()
+
+    db.init_db()
+    db.init_db()  # idempotent
+
+    with db.get_connection() as conn:
+        events = db.list_events(conn)
+        assert len(events) == 1
+        assert events[0]["place"] == "Pre-existing place"
+        assert events[0]["lat"] is None
+        assert events[0]["lon"] is None
+
+
 def test_migrate_add_is_trivial_column_is_idempotent_on_an_old_schema(tmp_path, monkeypatch):
     """Simulates a database created before is_trivial existed (a bare
     ALTER TABLE-less events table) to confirm init_db() upgrades it in

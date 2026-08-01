@@ -258,6 +258,24 @@ def _field_form_values() -> dict:
     }
 
 
+def _position_form_values() -> dict:
+    """Manual pin-drop on the event page always wins over whatever
+    coordinates.py auto-extracted from an MGRS grid reference -- returns {}
+    (no-op, existing value untouched) when the map wasn't touched this
+    submission, {"lat": None, "lon": None} when the "Ta bort position"
+    button was used, or the clicked lat/lon otherwise."""
+    if request.form.get("clear_position"):
+        return {"lat": None, "lon": None}
+    lat_raw = request.form.get("lat", "").strip()
+    lon_raw = request.form.get("lon", "").strip()
+    if not lat_raw or not lon_raw:
+        return {}
+    try:
+        return {"lat": float(lat_raw), "lon": float(lon_raw)}
+    except ValueError:
+        return {}
+
+
 def _save_uploaded_photos(conn, message_id: int) -> None:
     for file in request.files.getlist("photos"):
         if not file or not file.filename:
@@ -726,6 +744,7 @@ def event_detail(event_id: int):
 
         if request.method == "POST":
             fields = _field_form_values()
+            fields.update(_position_form_values())
             fields["needs_review"] = 0 if request.form.get("mark_reviewed") else 1
             fields["is_trivial"] = 1 if request.form.get("mark_trivial") else 0
             # A human just made a deliberate call on the "Trivial"
@@ -744,11 +763,26 @@ def event_detail(event_id: int):
 
         message = db.get_message(conn, event["message_id"])
         attachments = db.list_attachments_for_message(conn, event["message_id"])
+        map_center = db.get_map_center(conn)
+        map_cache_radius_km = db.get_map_cache_radius_km(conn)
 
     source = json.loads(message["raw_json"]).get("source", "signal")
+    fallback_lat, fallback_lon = map_center or config.DEFAULT_MAP_CENTER
+    map_position_outside_cache = (
+        map_center is not None
+        and event["lat"] is not None
+        and event["lon"] is not None
+        and not tiles.point_in_cached_area(
+            event["lat"], event["lon"], map_center[0], map_center[1], map_cache_radius_km
+        )
+    )
     return render_template(
         "event_detail.html", event=event, message=message, attachments=attachments,
-        source=source,
+        source=source, map_has_center=map_center is not None,
+        map_fallback_lat=fallback_lat, map_fallback_lon=fallback_lon,
+        map_min_zoom=config.MAP_CACHE_MIN_ZOOM,
+        map_max_zoom=config.MAP_CACHE_MAX_ZOOM,
+        map_position_outside_cache=map_position_outside_cache,
     )
 
 
