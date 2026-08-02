@@ -96,6 +96,52 @@
         }).bindPopup("Kartcentrum (Inställningar)").addTo(map);
       }
 
+      // Crosshair fixed at the center of the map viewport, plus a small
+      // box showing the position it's pointing at -- same aiming aid as
+      // Kart-vy, so the exact spot can be read off (and panned onto)
+      // before clicking to place the pin there.
+      var mapEl = document.getElementById("new-event-map");
+      var crosshair = document.createElement("div");
+      crosshair.className = "map-crosshair";
+      crosshair.innerHTML =
+        '<svg width="28" height="28" viewBox="0 0 28 28">' +
+        '<circle cx="14" cy="14" r="7" fill="none" stroke="#e63946" stroke-width="1.5"/>' +
+        '<line x1="14" y1="0" x2="14" y2="8" stroke="#e63946" stroke-width="1.5"/>' +
+        '<line x1="14" y1="20" x2="14" y2="28" stroke="#e63946" stroke-width="1.5"/>' +
+        '<line x1="0" y1="14" x2="8" y2="14" stroke="#e63946" stroke-width="1.5"/>' +
+        '<line x1="20" y1="14" x2="28" y2="14" stroke="#e63946" stroke-width="1.5"/>' +
+        "</svg>";
+      mapEl.appendChild(crosshair);
+
+      var positionBox = document.createElement("div");
+      positionBox.className = "map-position-box";
+      mapEl.appendChild(positionBox);
+
+      var lastMgrsText = "…";
+      function renderPositionBox(lat, lon, mgrsText) {
+        positionBox.innerHTML = lat.toFixed(5) + ", " + lon.toFixed(5) + "<br>MGRS: " + mgrsText;
+      }
+      function refreshPositionBoxMgrs() {
+        var center = map.getCenter();
+        lastMgrsText = "…";
+        renderPositionBox(center.lat, center.lng, lastMgrsText);
+        fetch("/karta/mgrs?lat=" + center.lat + "&lon=" + center.lng)
+          .then(function (resp) { return resp.json(); })
+          .then(function (data) {
+            if (data.mgrs) {
+              lastMgrsText = data.mgrs;
+              renderPositionBox(center.lat, center.lng, lastMgrsText);
+            }
+          })
+          .catch(function () {});
+      }
+      map.on("move", function () {
+        var center = map.getCenter();
+        renderPositionBox(center.lat, center.lng, lastMgrsText);
+      });
+      map.on("moveend", refreshPositionBoxMgrs);
+      refreshPositionBoxMgrs();
+
       var marker = null;
       map.on("click", function (e) {
         latInput.value = e.latlng.lat.toFixed(6);
