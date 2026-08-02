@@ -277,6 +277,14 @@
           {{ map_cached_tiles }} av {{ map_expected_tiles }} kartrutor cachade.
         </p>
         <form method="post" action="{{ url_for('events.download_map_tiles') }}">
+          {% if not map_center_is_custom %}
+            <label>
+              <input type="checkbox" name="confirm_default_center" value="1" required
+                     style="width:auto;display:inline;vertical-align:middle">
+              Kartcentrum är inte angivet &mdash; ladda ner kartor runt
+              standardpunkten (Kungliga slottet, Stockholm) ändå
+            </label>
+          {% endif %}
           <div class="actions">
             <button type="submit">Ladda ner kartor för området</button>
           </div>

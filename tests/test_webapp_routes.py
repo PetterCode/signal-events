@@ -1814,10 +1814,29 @@ def test_save_map_tile_url_route_with_empty_value_reverts_to_the_default():
         assert db_module.get_map_tile_url_template(conn) == config.DEFAULT_TILE_URL_TEMPLATE
 
 
-def test_download_map_tiles_route_uses_the_config_default_center_when_none_is_set(monkeypatch):
-    """get_map_center's fallback means a download can be kicked off (on
-    purpose or by mistake) before Kartcentrum's ever been touched -- it
-    must use config.DEFAULT_MAP_CENTER rather than refusing outright."""
+def test_download_map_tiles_route_refuses_the_default_center_without_confirmation(monkeypatch):
+    """Without an explicit Kartcentrum, a download would silently cache
+    tiles around config.DEFAULT_MAP_CENTER (Stockholm Palace) -- almost
+    never the real skyddsobjekt -- so it must be refused unless the
+    "confirm_default_center" checkbox was ticked."""
+    monkeypatch.setattr(
+        tiles, "download_area",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not download without confirmation")),
+    )
+
+    client = create_app().test_client()
+    client.post("/settings/map-tile-source", data={"tile_source": "url"})
+    resp = client.post("/settings/map-center/download", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "Kartcentrum är inte angivet".encode() in resp.data
+
+
+def test_download_map_tiles_route_uses_the_config_default_center_when_confirmed(monkeypatch):
+    """get_map_center's fallback means a download can proceed at
+    config.DEFAULT_MAP_CENTER once the operator has explicitly confirmed
+    that's what they want (see the refusal test above for the
+    unconfirmed case)."""
     calls = []
 
     def fake_download_area(center_lat, center_lon, radius_km, min_zoom, max_zoom, cache_dir, tile_url_template=None):
@@ -1837,7 +1856,9 @@ def test_download_map_tiles_route_uses_the_config_default_center_when_none_is_se
 
     client = create_app().test_client()
     client.post("/settings/map-tile-source", data={"tile_source": "url"})
-    resp = client.post("/settings/map-center/download", follow_redirects=True)
+    resp = client.post(
+        "/settings/map-center/download", data={"confirm_default_center": "1"}, follow_redirects=True,
+    )
 
     assert resp.status_code == 200
     assert len(calls) == 1

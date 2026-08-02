@@ -620,9 +620,26 @@ def download_map_tiles():
         # always has a real point to work with rather than needing its
         # own separate "no center set yet" error path.
         center = db.get_map_center(conn)
+        center_is_custom = db.has_custom_map_center(conn)
         tile_url_template = db.get_map_tile_url_template(conn)
         source = db.get_map_tile_source(conn)
         radius_km = db.get_map_cache_radius_km(conn)
+
+    # No Kartcentrum saved yet -- downloading would silently cache tiles
+    # around config.DEFAULT_MAP_CENTER (Stockholm Palace), which is
+    # almost never the actual skyddsobjekt. Require an explicit
+    # confirmation checkbox in that case rather than just proceeding, so
+    # a click before Kartcentrum's ever been touched can't waste a bulk
+    # download (or, worse, quietly leave the cache pointed at the wrong
+    # place) without the operator noticing.
+    if not center_is_custom and request.form.get("confirm_default_center") != "1":
+        flash(
+            "Kartcentrum är inte angivet -- bocka i rutan om du vill ladda "
+            "ner kartor runt standardpunkten (Kungliga slottet, Stockholm) "
+            "ändå, eller ange skyddsobjektets egen position ovan först.",
+            "error",
+        )
+        return redirect(url_for("events.settings"))
 
     if source == db.MAP_TILE_SOURCE_LANTMATERIET_FTP and not lantmateriet_ftp.gdal_available():
         flash(
