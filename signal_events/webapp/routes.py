@@ -367,6 +367,7 @@ def settings():
         ollama_port = db.get_ollama_port(conn)
         users = db.list_users(conn)
         map_center = db.get_map_center(conn)
+        map_center_is_custom = db.has_custom_map_center(conn)
         map_tile_url_template = db.get_map_tile_url_template(conn)
         map_tile_mode = db.get_map_tile_mode(conn)
         map_tile_source = db.get_map_tile_source(conn)
@@ -374,18 +375,18 @@ def settings():
         map_cache_radius_km = db.get_map_cache_radius_km(conn)
 
     example_filename = naming.build_report_filename(unit_name, "hotbedomning", "pdf")
-    map_center_mgrs = coordinates.to_mgrs(*map_center) if map_center is not None else None
-    map_expected_tiles = None
-    map_cached_tiles = tiles.cached_tile_count(config.TILE_CACHE_DIR)
-    if map_center is not None:
-        map_expected_tiles = tiles.expected_tile_count(
-            map_center[0], map_center[1], map_cache_radius_km,
-            config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
-        )
-        map_cached_tiles = tiles.cached_tile_count_for_area(
-            config.TILE_CACHE_DIR, map_center[0], map_center[1], map_cache_radius_km,
-            config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
-        )
+    # map_center always has a real value now (config.DEFAULT_MAP_CENTER
+    # until something's explicitly saved), so the cache-area figures
+    # below are always computable, not just once a center's been set.
+    map_center_mgrs = coordinates.to_mgrs(*map_center)
+    map_expected_tiles = tiles.expected_tile_count(
+        map_center[0], map_center[1], map_cache_radius_km,
+        config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
+    )
+    map_cached_tiles = tiles.cached_tile_count_for_area(
+        config.TILE_CACHE_DIR, map_center[0], map_center[1], map_cache_radius_km,
+        config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
+    )
     return render_template(
         "settings.html", unit_name=unit_name, example_filename=example_filename,
         adjacent_units=adjacent_units, watch_group=watch_group,
@@ -393,6 +394,7 @@ def settings():
         sensor_group=sensor_group, ollama_port=ollama_port, users=users,
         lan_url=_lan_url(),
         map_center=map_center, map_center_mgrs=map_center_mgrs,
+        map_center_is_custom=map_center_is_custom,
         map_cache_radius_km=map_cache_radius_km,
         map_cache_area_size=map_cache_area_size,
         map_cache_min_zoom=config.MAP_CACHE_MIN_ZOOM,
@@ -612,13 +614,15 @@ def download_map_tiles():
     batched -- several hours for this app's usual area, vs. minutes for a
     working URL-based provider)."""
     with db.get_connection() as conn:
+        # Falls back to config.DEFAULT_MAP_CENTER when nothing's been
+        # explicitly saved -- a download can be kicked off (deliberately
+        # or by mistake) before Kartcentrum's ever been touched, so this
+        # always has a real point to work with rather than needing its
+        # own separate "no center set yet" error path.
         center = db.get_map_center(conn)
         tile_url_template = db.get_map_tile_url_template(conn)
         source = db.get_map_tile_source(conn)
         radius_km = db.get_map_cache_radius_km(conn)
-    if center is None:
-        flash("Sätt ett kartcentrum innan du laddar ner kartor.", "error")
-        return redirect(url_for("events.settings"))
 
     if source == db.MAP_TILE_SOURCE_LANTMATERIET_FTP and not lantmateriet_ftp.gdal_available():
         flash(
@@ -813,6 +817,28 @@ def map_view():
         )
         map_center = db.get_map_center(conn)
         map_cache_radius_km = db.get_map_cache_radius_km(conn)
+        map_cache_area_size = db.get_map_cache_area_size(conn)
+        map_tile_mode = db.get_map_tile_mode(conn)
+        map_tile_source = db.get_map_tile_source(conn)
+    # Tiles are served strictly from the local cache -- rather than
+    # fetched live -- whenever "Lokal cache" mode is on, or regardless of
+    # mode when the Lantmäteriet FTP source is selected (per-tile fetching
+    # through it is too slow, see map_tile()) -- exactly the cases where
+    # "how much of the area is actually cached" is worth showing.
+    using_local_cache = (
+        map_tile_mode == db.MAP_TILE_MODE_LOCAL or map_tile_source != db.MAP_TILE_SOURCE_URL
+    )
+    map_cached_tiles = None
+    map_expected_tiles = None
+    if using_local_cache:
+        map_expected_tiles = tiles.expected_tile_count(
+            map_center[0], map_center[1], map_cache_radius_km,
+            config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
+        )
+        map_cached_tiles = tiles.cached_tile_count_for_area(
+            config.TILE_CACHE_DIR, map_center[0], map_center[1], map_cache_radius_km,
+            config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM,
+        )
     markers = [
         {
             "id": e["id"],
@@ -824,22 +850,20 @@ def map_view():
             "activity": e["activity"],
             "source_unit": e["source_unit"],
             "url": url_for("events.event_detail", event_id=e["id"]),
-            "in_cache": (
-                map_center is not None
-                and tiles.point_in_cached_area(
-                    e["lat"], e["lon"], map_center[0], map_center[1], map_cache_radius_km
-                )
+            "in_cache": tiles.point_in_cached_area(
+                e["lat"], e["lon"], map_center[0], map_center[1], map_cache_radius_km
             ),
         }
         for e in events
     ]
-    fallback_lat, fallback_lon = map_center or config.DEFAULT_MAP_CENTER
     return render_template(
-        "karta.html", markers=markers, map_has_center=map_center is not None,
-        map_fallback_lat=fallback_lat, map_fallback_lon=fallback_lon,
+        "karta.html", markers=markers, map_has_center=True,
+        map_fallback_lat=map_center[0], map_fallback_lon=map_center[1],
         map_min_zoom=config.MAP_CACHE_MIN_ZOOM,
         map_max_zoom=config.MAP_CACHE_MAX_ZOOM, since=preset,
         show_adjacent=show_adjacent, show_events=show_events,
+        using_local_cache=using_local_cache, map_cache_area_size=map_cache_area_size,
+        map_cached_tiles=map_cached_tiles, map_expected_tiles=map_expected_tiles,
     )
 
 
@@ -918,10 +942,9 @@ def _new_event_view(*, adjacent: bool):
         with db.get_connection() as conn:
             map_center = db.get_map_center(conn)
             adjacent_units = db.list_adjacent_units(conn) if adjacent else []
-        fallback_lat, fallback_lon = map_center or config.DEFAULT_MAP_CENTER
         return render_template(
-            template, map_has_center=map_center is not None,
-            map_fallback_lat=fallback_lat, map_fallback_lon=fallback_lon,
+            template, map_has_center=True,
+            map_fallback_lat=map_center[0], map_fallback_lon=map_center[1],
             map_min_zoom=config.MAP_CACHE_MIN_ZOOM,
             map_max_zoom=config.MAP_CACHE_MAX_ZOOM,
             adjacent_units=adjacent_units,
@@ -1220,10 +1243,8 @@ def event_detail(event_id: int):
         map_cache_radius_km = db.get_map_cache_radius_km(conn)
 
     source = json.loads(message["raw_json"]).get("source", "signal")
-    fallback_lat, fallback_lon = map_center or config.DEFAULT_MAP_CENTER
     map_position_outside_cache = (
-        map_center is not None
-        and event["lat"] is not None
+        event["lat"] is not None
         and event["lon"] is not None
         and not tiles.point_in_cached_area(
             event["lat"], event["lon"], map_center[0], map_center[1], map_cache_radius_km
@@ -1231,8 +1252,8 @@ def event_detail(event_id: int):
     )
     return render_template(
         "event_detail.html", event=event, message=message, attachments=attachments,
-        source=source, map_has_center=map_center is not None,
-        map_fallback_lat=fallback_lat, map_fallback_lon=fallback_lon,
+        source=source, map_has_center=True,
+        map_fallback_lat=map_center[0], map_fallback_lon=map_center[1],
         map_min_zoom=config.MAP_CACHE_MIN_ZOOM,
         map_max_zoom=config.MAP_CACHE_MAX_ZOOM,
         map_position_outside_cache=map_position_outside_cache,

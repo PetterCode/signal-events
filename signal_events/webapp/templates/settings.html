@@ -242,50 +242,57 @@
             <button type="submit">Spara områdesstorlek</button>
           </div>
         </form>
+        {% if not map_center_is_custom %}
+          <p class="map-hint">
+            Inget kartcentrum sparat än &mdash; använder tills vidare
+            standardpunkten nedan (Kungliga slottet, Stockholm). Spara ett
+            eget för att peka det mot skyddsobjektets faktiska område.
+          </p>
+        {% endif %}
         <form method="post" action="{{ url_for('events.save_map_center') }}">
           <label for="map_lat">Latitud</label>
           <input type="text" id="map_lat" name="lat"
-                 value="{{ '%.5f'|format(map_center[0]) if map_center else '' }}"
+                 value="{{ '%.5f'|format(map_center[0]) }}"
                  placeholder="59.33000">
 
           <label for="map_lon">Longitud</label>
           <input type="text" id="map_lon" name="lon"
-                 value="{{ '%.5f'|format(map_center[1]) if map_center else '' }}"
+                 value="{{ '%.5f'|format(map_center[1]) }}"
                  placeholder="18.06000">
 
           <div class="actions">
             <button type="submit">Spara kartcentrum</button>
           </div>
         </form>
-        {% if map_center %}
-          <p class="map-hint">
-            MGRS: {{ map_center_mgrs or "(kunde inte beräknas)" }}
-          </p>
+        <p class="map-hint">
+          MGRS: {{ map_center_mgrs or "(kunde inte beräknas)" }}
+        </p>
+        {% if map_center_is_custom %}
           <form method="post" action="{{ url_for('events.clear_map_center') }}" style="margin-top:0.5rem">
-            <button type="submit" class="btn-secondary">Rensa kartcentrum</button>
-          </form>
-
-          <p class="map-hint">
-            {{ map_cached_tiles }} av {{ map_expected_tiles }} kartrutor cachade.
-          </p>
-          <form method="post" action="{{ url_for('events.download_map_tiles') }}">
-            <div class="actions">
-              <button type="submit">Ladda ner kartor för området</button>
-            </div>
-          </form>
-          <p class="map-hint">
-            Om nedladdningen avbröts med en varning om att OpenStreetMap
-            blockerat fler förfrågningar (se Systemlogg) kan cachen innehålla
-            deras "blockerad"-bild istället för riktiga kartrutor -- använd
-            knappen nedan för att ta bort just de rutorna (riktiga kartrutor
-            påverkas inte).
-          </p>
-          <form method="post" action="{{ url_for('events.purge_blocked_map_tiles') }}">
-            <div class="actions">
-              <button type="submit" class="btn-secondary">Rensa blockerade kartrutor</button>
-            </div>
+            <button type="submit" class="btn-secondary">Rensa kartcentrum (återgå till standard)</button>
           </form>
         {% endif %}
+
+        <p class="map-hint">
+          {{ map_cached_tiles }} av {{ map_expected_tiles }} kartrutor cachade.
+        </p>
+        <form method="post" action="{{ url_for('events.download_map_tiles') }}">
+          <div class="actions">
+            <button type="submit">Ladda ner kartor för området</button>
+          </div>
+        </form>
+        <p class="map-hint">
+          Om nedladdningen avbröts med en varning om att OpenStreetMap
+          blockerat fler förfrågningar (se Systemlogg) kan cachen innehålla
+          deras "blockerad"-bild istället för riktiga kartrutor -- använd
+          knappen nedan för att ta bort just de rutorna (riktiga kartrutor
+          påverkas inte).
+        </p>
+        <form method="post" action="{{ url_for('events.purge_blocked_map_tiles') }}">
+          <div class="actions">
+            <button type="submit" class="btn-secondary">Rensa blockerade kartrutor</button>
+          </div>
+        </form>
       </div>
 
       <div class="settings-subsection">

@@ -450,11 +450,10 @@ def test_map_view_marks_kartcentrum_with_its_own_marker_when_a_center_is_set():
     assert b"L.circleMarker" in resp.data
 
 
-def test_map_view_has_no_kartcentrum_marker_when_no_center_is_set():
-    """The circleMarker code is only ever reached at runtime when
-    hasCenter is true -- with no center configured, that guard must be
-    false so no marker gets drawn even though an event marker still puts
-    the rest of the map script on the page."""
+def test_map_view_marks_the_config_default_as_kartcentrum_when_no_center_is_set():
+    """get_map_center falls back to config.DEFAULT_MAP_CENTER when nothing's
+    been explicitly saved, so Kart-vy always has a real Kartcentrum to draw
+    -- unlike before, hasCenter is never false."""
     with db_module.get_connection() as conn:
         message_id = db_module.insert_message(
             conn, signal_timestamp=1, sender_number=None, sender_name=None,
@@ -468,7 +467,68 @@ def test_map_view_has_no_kartcentrum_marker_when_no_center_is_set():
     resp = client.get("/karta")
 
     assert resp.status_code == 200
-    assert b"var hasCenter = false;" in resp.data
+    assert b"var hasCenter = true;" in resp.data
+    assert b"L.circleMarker" in resp.data
+
+
+def test_map_view_shows_no_tile_cache_status_in_online_mode_with_url_source():
+    """The default (online mode, URL-based provider) fetches tiles live
+    rather than depending on the local cache, so "X av Y kartrutor
+    cachade" would be misleading/irrelevant here -- unlike Inställningar,
+    where it's always shown since that's about managing the cache
+    itself regardless of whether it's actually being relied on."""
+    with db_module.get_connection() as conn:
+        db_module.set_map_center(conn, 59.33, 18.06)
+        db_module.set_map_tile_source(conn, db_module.MAP_TILE_SOURCE_URL)
+
+    client = create_app().test_client()
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"kartrutor cachade" not in resp.data
+
+
+def test_map_view_shows_tile_cache_status_in_local_mode():
+    with db_module.get_connection() as conn:
+        db_module.set_map_center(conn, 59.33, 18.06)
+        db_module.set_map_tile_mode(conn, db_module.MAP_TILE_MODE_LOCAL)
+        db_module.set_map_cache_area_size(conn, "medium")
+
+    client = create_app().test_client()
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"kartrutor cachade" in resp.data
+    assert b"Mellan (10 x 10 km)" in resp.data
+
+
+def test_map_view_shows_tile_cache_status_for_lantmateriet_ftp_source_even_in_online_mode():
+    """Lantmäteriet's FTP source is always cache-only regardless of
+    Kartläge (see map_tile()'s docstring), so the cache status is
+    relevant here too, not just in "Lokal cache" mode."""
+    with db_module.get_connection() as conn:
+        db_module.set_map_center(conn, 59.33, 18.06)
+        db_module.set_map_tile_source(conn, db_module.MAP_TILE_SOURCE_LANTMATERIET_FTP)
+
+    client = create_app().test_client()
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"kartrutor cachade" in resp.data
+
+
+def test_map_view_shows_tile_cache_status_in_local_mode_even_without_an_explicit_center():
+    """get_map_center's config.DEFAULT_MAP_CENTER fallback means there's
+    always a real point to compute an expected/cached tile count for, even
+    before Kartcentrum's ever been touched on Inställningar."""
+    with db_module.get_connection() as conn:
+        db_module.set_map_tile_mode(conn, db_module.MAP_TILE_MODE_LOCAL)
+
+    client = create_app().test_client()
+    resp = client.get("/karta")
+
+    assert resp.status_code == 200
+    assert b"kartrutor cachade" in resp.data
 
 
 def test_new_event_get_passes_map_context_to_the_template():
@@ -1538,12 +1598,13 @@ def test_reset_database_route_restores_map_settings_to_their_defaults():
     with db_module.get_connection() as conn:
         assert db_module.get_map_tile_source(conn) == db_module.MAP_TILE_SOURCE_LANTMATERIET_FTP
         assert db_module.get_map_cache_area_size(conn) == config.MAP_CACHE_DEFAULT_AREA_SIZE
-        assert db_module.get_map_center(conn) is None
+        assert db_module.get_map_center(conn) == config.DEFAULT_MAP_CENTER
+        assert db_module.has_custom_map_center(conn) is False
 
     settings_resp = client.get("/settings")
     assert b'value="lantmateriet_ftp" checked' in settings_resp.data
     assert b'value="small" checked' in settings_resp.data
-    assert b"MGRS:" not in settings_resp.data
+    assert "Inget kartcentrum sparat än".encode() in settings_resp.data
 
 
 def test_save_map_center_route_persists_a_valid_center():
@@ -1653,12 +1714,14 @@ def test_settings_page_shows_kartcentrum_as_mgrs_once_a_center_is_set():
     assert "MGRS: 34VCL".encode() in resp.data
 
 
-def test_settings_page_has_no_mgrs_line_when_no_center_is_set():
+def test_settings_page_shows_the_config_default_center_when_none_is_set():
     client = create_app().test_client()
     resp = client.get("/settings")
 
     assert resp.status_code == 200
-    assert b"MGRS:" not in resp.data
+    assert b"MGRS:" in resp.data
+    assert "Inget kartcentrum sparat än".encode() in resp.data
+    assert b"Rensa kartcentrum" not in resp.data
 
 
 def test_settings_page_tile_count_ignores_stray_tiles_from_a_previous_center():
@@ -1695,7 +1758,8 @@ def test_save_map_center_route_rejects_invalid_input():
         assert "Ogiltig position".encode() in resp.data
 
     with db_module.get_connection() as conn:
-        assert db_module.get_map_center(conn) is None
+        assert db_module.has_custom_map_center(conn) is False
+        assert db_module.get_map_center(conn) == config.DEFAULT_MAP_CENTER
 
 
 def test_clear_map_center_route_removes_the_stored_center():
@@ -1706,7 +1770,8 @@ def test_clear_map_center_route_removes_the_stored_center():
 
     assert resp.status_code == 200
     with db_module.get_connection() as conn:
-        assert db_module.get_map_center(conn) is None
+        assert db_module.has_custom_map_center(conn) is False
+        assert db_module.get_map_center(conn) == config.DEFAULT_MAP_CENTER
 
 
 def test_save_map_tile_url_route_persists_a_valid_template():
@@ -1749,12 +1814,35 @@ def test_save_map_tile_url_route_with_empty_value_reverts_to_the_default():
         assert db_module.get_map_tile_url_template(conn) == config.DEFAULT_TILE_URL_TEMPLATE
 
 
-def test_download_map_tiles_route_requires_a_center_to_be_set_first():
+def test_download_map_tiles_route_uses_the_config_default_center_when_none_is_set(monkeypatch):
+    """get_map_center's fallback means a download can be kicked off (on
+    purpose or by mistake) before Kartcentrum's ever been touched -- it
+    must use config.DEFAULT_MAP_CENTER rather than refusing outright."""
+    calls = []
+
+    def fake_download_area(center_lat, center_lon, radius_km, min_zoom, max_zoom, cache_dir, tile_url_template=None):
+        calls.append((center_lat, center_lon))
+        return (0, 0, 0, False)
+
+    class ImmediateThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self._target = target
+            self._args = args
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr(tiles, "download_area", fake_download_area)
+    monkeypatch.setattr(routes_module.threading, "Thread", ImmediateThread)
+
     client = create_app().test_client()
+    client.post("/settings/map-tile-source", data={"tile_source": "url"})
     resp = client.post("/settings/map-center/download", follow_redirects=True)
 
     assert resp.status_code == 200
-    assert "Sätt ett kartcentrum".encode() in resp.data
+    assert len(calls) == 1
+    assert calls[0][0] == pytest.approx(config.DEFAULT_MAP_CENTER[0])
+    assert calls[0][1] == pytest.approx(config.DEFAULT_MAP_CENTER[1])
 
 
 def test_download_map_tiles_route_rejects_when_the_area_exceeds_the_tile_count_cap(monkeypatch):

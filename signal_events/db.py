@@ -709,20 +709,41 @@ def set_sensor_group_name(conn: sqlite3.Connection, value: str) -> None:
     set_setting(conn, SENSOR_GROUP_NAME_KEY, value.strip())
 
 
-def get_map_center(conn: sqlite3.Connection) -> Optional[tuple[float, float]]:
+def get_map_center(conn: sqlite3.Connection) -> tuple[float, float]:
     """The (lat, lon) center point tile downloads and both maps in the web
-    UI are built around, or None if nothing has been set yet on
-    Inställningar. Stored as plain strings (like every other setting) so
-    an unparsable stored value (shouldn't happen, but never say never)
-    fails safe as "no center set" rather than raising."""
+    UI are built around -- falls back to config.DEFAULT_MAP_CENTER when
+    nothing has been explicitly saved on Inställningar (or the stored
+    value is unparsable), the same "always returns something usable"
+    convention as get_map_tile_url_template. Never returns None, so every
+    map/tile-cache feature has a real center to work with from the very
+    first run, without requiring a save first. Use has_custom_map_center
+    to tell whether the returned point is this fallback or an explicit
+    override."""
     lat = get_setting(conn, MAP_CENTER_LAT_KEY)
     lon = get_setting(conn, MAP_CENTER_LON_KEY)
     if lat is None or lon is None:
-        return None
+        return config.DEFAULT_MAP_CENTER
     try:
         return float(lat), float(lon)
     except ValueError:
-        return None
+        return config.DEFAULT_MAP_CENTER
+
+
+def has_custom_map_center(conn: sqlite3.Connection) -> bool:
+    """True once a center has been explicitly saved on Inställningar --
+    i.e. get_map_center is returning that value rather than falling back
+    to config.DEFAULT_MAP_CENTER. Gates whether "Rensa kartcentrum" has
+    anything to actually clear."""
+    lat = get_setting(conn, MAP_CENTER_LAT_KEY)
+    lon = get_setting(conn, MAP_CENTER_LON_KEY)
+    if lat is None or lon is None:
+        return False
+    try:
+        float(lat)
+        float(lon)
+    except ValueError:
+        return False
+    return True
 
 
 def set_map_center(conn: sqlite3.Connection, lat: float, lon: float) -> None:

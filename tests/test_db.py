@@ -148,9 +148,10 @@ def test_clearing_the_ollama_port_reverts_to_the_config_default():
         assert db.get_ollama_port(conn) == _expected_default_ollama_port()
 
 
-def test_map_center_defaults_to_none():
+def test_map_center_defaults_to_the_config_default():
     with db.get_connection() as conn:
-        assert db.get_map_center(conn) is None
+        assert db.get_map_center(conn) == config.DEFAULT_MAP_CENTER
+        assert db.has_custom_map_center(conn) is False
 
 
 def test_set_and_get_map_center_round_trip():
@@ -159,20 +160,23 @@ def test_set_and_get_map_center_round_trip():
         lat, lon = db.get_map_center(conn)
         assert lat == pytest.approx(59.33)
         assert lon == pytest.approx(18.06)
+        assert db.has_custom_map_center(conn) is True
 
 
-def test_clear_map_center_reverts_to_none():
+def test_clear_map_center_reverts_to_the_config_default():
     with db.get_connection() as conn:
         db.set_map_center(conn, 59.33, 18.06)
         db.clear_map_center(conn)
-        assert db.get_map_center(conn) is None
+        assert db.get_map_center(conn) == config.DEFAULT_MAP_CENTER
+        assert db.has_custom_map_center(conn) is False
 
 
-def test_get_map_center_returns_none_for_an_unparsable_stored_value():
+def test_get_map_center_falls_back_to_the_config_default_for_an_unparsable_stored_value():
     with db.get_connection() as conn:
         db.set_setting(conn, db.MAP_CENTER_LAT_KEY, "not-a-number")
         db.set_setting(conn, db.MAP_CENTER_LON_KEY, "18.06")
-        assert db.get_map_center(conn) is None
+        assert db.get_map_center(conn) == config.DEFAULT_MAP_CENTER
+        assert db.has_custom_map_center(conn) is False
 
 
 def test_map_tile_url_template_defaults_to_the_config_default():
@@ -665,7 +669,8 @@ def test_reset_all_restores_map_settings_to_their_defaults():
         assert db.get_map_tile_source(conn) == db.MAP_TILE_SOURCE_LANTMATERIET_FTP
         assert db.get_map_tile_url_template(conn) == config.DEFAULT_TILE_URL_TEMPLATE
         assert db.get_map_cache_area_size(conn) == config.MAP_CACHE_DEFAULT_AREA_SIZE
-        assert db.get_map_center(conn) is None
+        assert db.get_map_center(conn) == config.DEFAULT_MAP_CENTER
+        assert db.has_custom_map_center(conn) is False
 
 
 def test_insert_event_defaults_is_trivial_to_false():

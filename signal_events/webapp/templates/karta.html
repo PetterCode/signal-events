@@ -38,27 +38,41 @@
           Dolda &mdash; klicka "Visa alla händelser" ovan för att se dem.
         {% endif %}
       </p>
-      <div class="actions">
-        <button type="button" id="map-fullscreen-btn" class="btn-secondary">Helskärm</button>
-      </div>
-      <div id="events-map" class="map-container map-container-large"></div>
-    {% elif map_has_center %}
-      <p class="map-hint">
-        Inga händelser med känd position under vald tidsperiod. Kartan
-        visar det cachade området runt kartcentrum (se Inställningar).
-      </p>
+      {% if using_local_cache and map_expected_tiles is not none %}
+        <p class="map-hint">
+          Lokal kartcache
+          &mdash;
+          {% if map_cache_area_size == "small" %}Litet (1 x 1 km)
+          {% elif map_cache_area_size == "medium" %}Mellan (10 x 10 km)
+          {% else %}Stort (100 x 100 km)
+          {% endif %}
+          &mdash; {{ map_cached_tiles }} av {{ map_expected_tiles }} kartrutor cachade.
+        </p>
+      {% endif %}
       <div class="actions">
         <button type="button" id="map-fullscreen-btn" class="btn-secondary">Helskärm</button>
       </div>
       <div id="events-map" class="map-container map-container-large"></div>
     {% else %}
-      <p>Inga händelser med känd position under vald tidsperiod, och inget
-      kartcentrum är satt. Position sätts automatiskt när en rapport
-      innehåller en koordinat (MGRS, decimalgrader, grader/minuter/sekunder
-      eller grader/decimalminuter, t.ex. i fältet "Ställe"), eller
-      manuellt genom att klicka i kartan på en händelses egen sida -- sätt
-      gärna ett kartcentrum på Inställningar först så kartrutorna kan
-      laddas ner.</p>
+      <p class="map-hint">
+        Inga händelser med känd position under vald tidsperiod. Kartan
+        visar det cachade området runt kartcentrum (se Inställningar).
+      </p>
+      {% if using_local_cache and map_expected_tiles is not none %}
+        <p class="map-hint">
+          Lokal kartcache
+          &mdash;
+          {% if map_cache_area_size == "small" %}Litet (1 x 1 km)
+          {% elif map_cache_area_size == "medium" %}Mellan (10 x 10 km)
+          {% else %}Stort (100 x 100 km)
+          {% endif %}
+          &mdash; {{ map_cached_tiles }} av {{ map_expected_tiles }} kartrutor cachade.
+        </p>
+      {% endif %}
+      <div class="actions">
+        <button type="button" id="map-fullscreen-btn" class="btn-secondary">Helskärm</button>
+      </div>
+      <div id="events-map" class="map-container map-container-large"></div>
     {% endif %}
   </div>
 {% endblock %}
