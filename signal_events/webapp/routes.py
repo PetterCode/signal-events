@@ -471,12 +471,18 @@ def save_map_center():
     lon_raw = request.form.get("lon", "").strip()
     try:
         lat, lon = float(lat_raw), float(lon_raw)
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        # ±85.0511... (not ±90) is the actual usable range: it's where
+        # Web Mercator itself -- the projection tiles.py's tile math
+        # assumes -- stops being defined (the pole is an asymptote, not
+        # a point on the map), the same limit Leaflet/OSM/Google Maps
+        # all clamp to. A center inside ±90 but outside this would crash
+        # every tile-count/tile-cache computation on this page.
+        if not (-85.0511 <= lat <= 85.0511 and -180 <= lon <= 180):
             raise ValueError
     except ValueError:
         flash(
-            "Ogiltig position -- ange latitud (-90 till 90) och longitud "
-            "(-180 till 180), t.ex. 59.3300, 18.0600.", "error",
+            "Ogiltig position -- ange latitud (-85.05 till 85.05) och "
+            "longitud (-180 till 180), t.ex. 59.3300, 18.0600.", "error",
         )
     else:
         with db.get_connection() as conn:

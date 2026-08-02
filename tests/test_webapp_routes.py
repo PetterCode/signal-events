@@ -1788,6 +1788,36 @@ def test_save_map_center_route_rejects_invalid_input():
         assert db_module.get_map_center(conn) == config.DEFAULT_MAP_CENTER
 
 
+def test_save_map_center_route_rejects_latitudes_too_close_to_the_poles():
+    """Regression: ±90 is a mathematically valid latitude but Web
+    Mercator (which tiles.py's tile math assumes) is undefined right at
+    the poles -- saving one used to crash every later page that computes
+    a tile count for the configured center (Inställningar, Kart-vy) with
+    a ValueError from math.log, not just reject the save. Anything past
+    ±85.0511 (the same practical limit Leaflet/OSM/Google Maps clamp to)
+    must be rejected up front instead."""
+    client = create_app().test_client()
+
+    for bad_lat in ["90", "-90", "89", "-89", "85.1", "-85.1"]:
+        resp = client.post(
+            "/settings/map-center", data={"lat": bad_lat, "lon": "18.06"}, follow_redirects=True
+        )
+        assert resp.status_code == 200
+        assert "Ogiltig position".encode() in resp.data
+
+    with db_module.get_connection() as conn:
+        assert db_module.has_custom_map_center(conn) is False
+
+    # A center right at the edge of the usable range must still work,
+    # and the settings page (which computes a tile count for it) must
+    # not crash when rendered afterwards.
+    resp = client.post(
+        "/settings/map-center", data={"lat": "85.0", "lon": "18.06"}, follow_redirects=True
+    )
+    assert resp.status_code == 200
+    assert "Kartcentrum sparat".encode() in resp.data
+
+
 def test_clear_map_center_route_removes_the_stored_center():
     client = create_app().test_client()
     client.post("/settings/map-center", data={"lat": "59.33", "lon": "18.06"})
