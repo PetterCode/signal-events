@@ -302,7 +302,15 @@ def _save_uploaded_photos(conn, message_id: int) -> None:
             continue
         dest_dir = config.ATTACHMENTS_DIR / str(message_id)
         dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / secure_filename(file.filename)
+        # secure_filename strips path separators/special chars but not
+        # length -- an uploaded filename longer than the filesystem's own
+        # limit (255 bytes on macOS/most Linux) makes file.save() raise
+        # OSError("File name too long") instead of just saving under a
+        # shorter name, so the stem is capped well under that regardless
+        # of what the client sent.
+        safe_name = secure_filename(file.filename)
+        stem, suffix = Path(safe_name).stem, Path(safe_name).suffix
+        dest = dest_dir / (stem[:100] + suffix[:20])
         file.save(dest)
         db.insert_attachment(
             conn, message_id=message_id, file_path=str(dest), content_type=file.mimetype

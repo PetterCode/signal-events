@@ -6,6 +6,7 @@ persistence across requests and a couple of end-to-end route behaviors
 that can't be verified any other way."""
 
 import hashlib
+import io
 import json
 from pathlib import Path
 
@@ -643,6 +644,31 @@ def test_new_event_post_without_any_position_leaves_lat_lon_null():
     assert len(events) == 1
     assert events[0]["lat"] is None
     assert events[0]["lon"] is None
+
+
+def test_new_event_post_with_an_overlong_photo_filename_still_saves():
+    """Regression: secure_filename() strips path separators/special
+    characters but not length -- an uploaded filename longer than the
+    filesystem's own limit (255 bytes on macOS/most Linux) used to crash
+    the whole request with OSError("File name too long") instead of just
+    saving under a (still unique enough) shorter name."""
+    client = create_app().test_client()
+    photo = (io.BytesIO(b"fake-image-bytes"), "f" * 500 + ".jpg")
+
+    resp = client.post(
+        "/events/new",
+        data={"place": "Foto med extremt långt filnamn", "photos": [photo]},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+        assert len(events) == 1
+        attachments = db_module.list_attachments_for_message(conn, events[0]["message_id"])
+    assert len(attachments) == 1
+    assert len(Path(attachments[0]["file_path"]).name) <= 120
 
 
 def test_new_adjacent_event_get_shows_the_source_unit_field_and_known_units():
