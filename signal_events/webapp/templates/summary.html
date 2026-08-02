@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Sammanställd hotbedömning{% endblock %}
 {% block content %}
-  <h1>Sammanställd hotbedömning &mdash; {{ site_name }}</h1>
+  <h1>Sammanställd hotbedömning &mdash; {{ unit_name }}</h1>
 
   <div class="filters">
     Tidsperiod:
@@ -18,14 +18,6 @@
   </div>
 
   <p>
-    <a class="btn" href="{{ url_for('events.summary', since=since, include_unreviewed=1 if include_unreviewed else 0, download='pdf') }}">Ladda ner PDF</a>
-    <a class="btn btn-secondary" href="{{ url_for('events.summary', since=since, include_unreviewed=1 if include_unreviewed else 0, download='markdown') }}">Ladda ner Markdown</a>
-    <a class="btn btn-secondary" href="{{ url_for('events.summary', since=since, include_unreviewed=1 if include_unreviewed else 0, download='text') }}">Ladda ner textfil</a>
-    <form method="post" action="{{ url_for('events.summary_send') }}" style="display:inline">
-      <input type="hidden" name="since" value="{{ since }}">
-      <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
-      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Skicka till Signal</button>
-    </form>
     <form method="post" action="{{ url_for('events.summary_send_recurring') }}" style="display:inline">
       <input type="hidden" name="since" value="{{ since }}">
       <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
@@ -33,7 +25,6 @@
     </form>
   </p>
   <p style="font-size:0.8rem;color:#666;margin-top:-0.5rem">
-    Skickas som PDF till Signal-gruppen <strong>{{ report_group_name }}</strong>.
     Listan över återkommande fordon/personer/observationer (utan hotnivå)
     skickas till <strong>{{ recurring_group_name }}</strong>.
     &nbsp;·&nbsp;
@@ -70,6 +61,41 @@
       bedömning &mdash; verifiera alltid underliggande händelser innan
       åtgärd vidtas.
     </p>
+  </div>
+
+  <div class="card">
+    <h3>Hotbildsrapport</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Skapar en uppdaterad hotbildsbedömning: hotnivån ovan (inklusive en
+      eventuell manuell justering) tas som given, och en lägestext
+      föreslås av AI-analys utifrån den &mdash; granska och redigera texten
+      nedan innan den sparas eller skickas.
+    </p>
+    <form method="post" action="{{ url_for('events.summary_narrative') }}">
+      <input type="hidden" name="since" value="{{ since }}">
+      <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+
+      {% if narrative %}
+        <label for="narrative_text">Lägestext (redigerbar)</label>
+        <textarea id="narrative_text" name="narrative_text" style="min-height:12rem">{{ narrative }}</textarea>
+      {% endif %}
+
+      <div class="actions">
+        <button type="submit" class="btn-secondary">
+          {% if narrative %}Skapa ny hotbildsbedömning{% else %}Skapa uppdaterad hotbildsbedömning{% endif %}
+        </button>
+        {% if narrative %}
+          <button type="submit" formaction="{{ url_for('events.summary_save_text') }}" class="btn-secondary">Spara som text</button>
+          <button type="submit" formaction="{{ url_for('events.summary_save_pdf') }}" class="btn-secondary">Spara som PDF</button>
+          <button type="submit" formaction="{{ url_for('events.summary_send') }}">Skicka till Signal</button>
+        {% endif %}
+      </div>
+    </form>
+    {% if narrative %}
+      <p style="font-size:0.8rem;color:#666">
+        Skickas som PDF till Signal-gruppen <strong>{{ report_group_name }}</strong>.
+      </p>
+    {% endif %}
   </div>
 
   <div class="card">

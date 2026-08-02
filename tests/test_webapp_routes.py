@@ -76,7 +76,7 @@ def test_summary_download_filename_tnr_matches_the_logged_entry():
         db_module.set_unit_name(conn, "Kompani 1")
 
     client = create_app().test_client()
-    resp = client.get("/summary?since=all&download=pdf")
+    resp = client.post("/summary/save-pdf", data={"since": "all"})
 
     assert resp.status_code == 200
     disposition = resp.headers.get("Content-Disposition", "")
@@ -93,6 +93,85 @@ def test_summary_download_filename_tnr_matches_the_logged_entry():
     assert entries[0]["unit_name"] == "Kompani 1"
     assert entries[0]["source"] == "download"
     assert entries[0]["format"] == "pdf"
+
+
+def test_summary_narrative_route_shows_the_generated_text_in_an_editable_textarea():
+    from unittest.mock import MagicMock, patch
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(
+        {"response": "Läget är lugnt vid skyddsobjektet under perioden."}
+    ).encode()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.__exit__.return_value = False
+
+    client = create_app().test_client()
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        resp = client.post("/summary/narrative", data={"since": "7d"}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert b'name="narrative_text"' in resp.data
+    assert "Läget är lugnt vid skyddsobjektet under perioden.".encode() in resp.data
+
+
+def test_summary_narrative_route_flashes_an_error_and_shows_no_draft_on_llm_failure():
+    from unittest.mock import patch
+
+    import urllib.error
+
+    client = create_app().test_client()
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("no route")):
+        resp = client.post("/summary/narrative", data={"since": "7d"}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert b'name="narrative_text"' not in resp.data
+
+
+def test_summary_save_text_uses_the_submitted_narrative_text_not_a_fresh_generation():
+    """save-text must use exactly what's in the reviewed/edited textarea --
+    it never calls the LLM again, so a human's edits are what actually
+    gets saved, not the original AI draft."""
+    client = create_app().test_client()
+    resp = client.post(
+        "/summary/save-text",
+        data={"since": "7d", "narrative_text": "Redigerad lägestext av vakthavande."},
+    )
+
+    assert resp.status_code == 200
+    assert "Redigerad lägestext av vakthavande.".encode() in resp.data
+
+
+def test_summary_save_pdf_logs_the_generation_like_the_old_download_did():
+    client = create_app().test_client()
+    resp = client.post(
+        "/summary/save-pdf",
+        data={"since": "7d", "narrative_text": "Redigerad lägestext."},
+    )
+
+    assert resp.status_code == 200
+    assert "_hotbedomning.pdf" in resp.headers.get("Content-Disposition", "")
+
+    with db_module.get_connection() as conn:
+        entries = db_module.list_summary_log(conn)
+    assert len(entries) == 1
+    assert entries[0]["source"] == "download"
+    assert entries[0]["format"] == "pdf"
+
+
+def test_summary_send_uses_the_submitted_narrative_text():
+    from unittest.mock import patch
+
+    from signal_events import signal_client
+
+    client = create_app().test_client()
+    with patch.object(signal_client, "send_to_group_by_name") as mock_send:
+        resp = client.post(
+            "/summary/send",
+            data={"since": "7d", "narrative_text": "Lägestext för Signal-utskick."},
+        )
+
+    assert resp.status_code == 302
+    mock_send.assert_called_once()
 
 
 def test_header_status_strip_shows_unit_name_threat_level_and_last_adjacent_send():

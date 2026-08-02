@@ -1581,46 +1581,55 @@ def summary():
     session["summary_since"] = preset
     session["summary_include_unreviewed"] = include_unreviewed
 
-    download = request.args.get("download")
-
     summary_data = _compute_summary(preset, include_unreviewed)
+    return _render_summary_page(preset, include_unreviewed, summary_data)
 
-    if download in ("markdown", "pdf", "text"):
-        tnr = _log_summary_generation(summary_data, preset, source="download", format=download)
-    else:
-        tnr = None
 
-    if download == "markdown":
-        content = generator.render_summary_markdown(summary_data, site_name=config.SITE_NAME)
-        buf = io.BytesIO(content.encode("utf-8"))
-        return send_file(
-            buf, mimetype="text/markdown", as_attachment=True,
-            download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "md", tnr=tnr),
-        )
-    if download == "text":
-        content = generator.render_summary_text(summary_data, site_name=config.SITE_NAME)
-        buf = io.BytesIO(content.encode("utf-8"))
-        return send_file(
-            buf, mimetype="text/plain", as_attachment=True,
-            download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "txt", tnr=tnr),
-        )
-    if download == "pdf":
-        buf = generator.render_summary_pdf(summary_data, site_name=config.SITE_NAME)
-        return send_file(
-            buf, mimetype="application/pdf", as_attachment=True,
-            download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "pdf", tnr=tnr),
-        )
-
+def _render_summary_page(
+    preset: str, include_unreviewed: bool, summary_data: analysis.Summary,
+    narrative: str | None = None,
+):
     report_group = _report_group_name()
     return render_template(
         "summary.html", summary=summary_data, since=preset,
-        include_unreviewed=include_unreviewed, site_name=config.SITE_NAME,
+        include_unreviewed=include_unreviewed, unit_name=_unit_name(),
         report_group_name=report_group,
         recurring_group_name=_recurring_group_name(),
         adjacent_reports_group_name=report_group,
         adjacent_rows=_adjacent_status_rows(preset),
         override=_threat_override_display(),
+        narrative=narrative,
     )
+
+
+@bp.route("/summary/narrative", methods=["POST"])
+def summary_narrative():
+    """Generates (or regenerates) the editable hotbildsbedömning draft: the
+    threat level itself is unchanged (still the deterministic analysis.py
+    verdict), but this asks the local Ollama server for a prose narrative
+    (llm.generate_narrative) and shows it in an editable textarea on the
+    same page, so a human reviews/adjusts the wording before it's saved
+    as a file or sent to Signal (see summary_save_text/_pdf/summary_send,
+    which take whatever text is actually in that textarea at submit
+    time -- never regenerated server-side). The button that triggers this
+    lives in the same form as the draft textarea, so a failed regeneration
+    (Ollama not running, timeout, ...) falls back to whatever draft was
+    already there rather than wiping out a human's prior edits -- only a
+    successful call replaces it."""
+    preset = request.form.get("since", "7d")
+    include_unreviewed = request.form.get("include_unreviewed") == "1"
+    previous_draft = request.form.get("narrative_text", "").strip() or None
+
+    summary_data = _compute_summary(preset, include_unreviewed)
+    with db.get_connection() as conn:
+        base_url = llm.resolve_ollama_url(db.get_ollama_port(conn))
+    try:
+        narrative = llm.generate_narrative(summary_data, site_name=config.SITE_NAME, base_url=base_url)
+    except llm.LLMError as exc:
+        flash(str(exc), "error")
+        narrative = previous_draft
+
+    return _render_summary_page(preset, include_unreviewed, summary_data, narrative=narrative)
 
 
 def _threat_override_display() -> dict | None:
@@ -1674,14 +1683,50 @@ def summary_log():
     return render_template("summary_log.html", entries=entries)
 
 
+@bp.route("/summary/save-text", methods=["POST"])
+def summary_save_text():
+    """Saves the hotbildsbedömning draft as a text file -- `narrative_text`
+    is whatever's currently in the review textarea (edited or not), never
+    regenerated here, so what's saved is exactly what was reviewed."""
+    preset = request.form.get("since", "7d")
+    include_unreviewed = request.form.get("include_unreviewed") == "1"
+    narrative = request.form.get("narrative_text", "").strip() or None
+
+    summary_data = _compute_summary(preset, include_unreviewed)
+    tnr = _log_summary_generation(summary_data, preset, source="download", format="text")
+    content = generator.render_summary_text(summary_data, site_name=config.SITE_NAME, narrative=narrative)
+    buf = io.BytesIO(content.encode("utf-8"))
+    return send_file(
+        buf, mimetype="text/plain", as_attachment=True,
+        download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "txt", tnr=tnr),
+    )
+
+
+@bp.route("/summary/save-pdf", methods=["POST"])
+def summary_save_pdf():
+    """Same as summary_save_text, but PDF -- see that route's docstring."""
+    preset = request.form.get("since", "7d")
+    include_unreviewed = request.form.get("include_unreviewed") == "1"
+    narrative = request.form.get("narrative_text", "").strip() or None
+
+    summary_data = _compute_summary(preset, include_unreviewed)
+    tnr = _log_summary_generation(summary_data, preset, source="download", format="pdf")
+    buf = generator.render_summary_pdf(summary_data, site_name=config.SITE_NAME, narrative=narrative)
+    return send_file(
+        buf, mimetype="application/pdf", as_attachment=True,
+        download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "pdf", tnr=tnr),
+    )
+
+
 @bp.route("/summary/send", methods=["POST"])
 def summary_send():
     preset = request.form.get("since", "7d")
     include_unreviewed = request.form.get("include_unreviewed") == "1"
+    narrative = request.form.get("narrative_text", "").strip() or None
 
     summary_data = _compute_summary(preset, include_unreviewed)
     tnr = _log_summary_generation(summary_data, preset, source="send", format="pdf")
-    buf = generator.render_summary_pdf(summary_data, site_name=config.SITE_NAME)
+    buf = generator.render_summary_pdf(summary_data, site_name=config.SITE_NAME, narrative=narrative)
     threat = summary_data.threat
     caption = (
         f"Sammanställd hotbedömning – {config.SITE_NAME} – "
