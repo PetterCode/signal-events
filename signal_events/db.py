@@ -415,6 +415,34 @@ def get_event(conn: sqlite3.Connection, event_id: int) -> Optional[sqlite3.Row]:
     return conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
 
 
+def search_events(conn: sqlite3.Connection, query: str, limit: int = 50) -> list[sqlite3.Row]:
+    """Fast plain-text search across every free-text field an event has --
+    plats, objekt, aktivitet, kännetecken (where a vehicle registration
+    number typically ends up), rapporterad av, nästa steg, and the
+    original message text -- for the AI-analys tab's search box. A
+    deliberately simple SQL LIKE lookup, not a semantic/LLM search:
+    instant, and finds an exact plate/keyword match without waiting on
+    Ollama or risking a paraphrased miss. Matches events from every unit
+    (this one's own and adjacent units') and regardless of trivial/
+    duplicate/review status, since the point is "has this ever been
+    logged anywhere", not threat analysis. Returns [] for a blank query
+    rather than every event in the database."""
+    query = query.strip()
+    if not query:
+        return []
+    needle = f"%{query}%"
+    return conn.execute(
+        """
+        SELECT * FROM events
+        WHERE place LIKE ? OR object LIKE ? OR activity LIKE ? OR marks LIKE ?
+           OR reported_by LIKE ? OR next_steps LIKE ? OR raw_text LIKE ?
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (needle, needle, needle, needle, needle, needle, needle, limit),
+    ).fetchall()
+
+
 def list_events_with_position(
     conn: sqlite3.Connection, since: Optional[str] = None, include_adjacent: bool = True
 ) -> list[sqlite3.Row]:

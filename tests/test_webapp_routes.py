@@ -1084,6 +1084,45 @@ def test_summary_ai_tab_renders_empty_chat_with_no_history():
     assert "Inget skrivet ännu".encode() in resp.data
 
 
+def test_summary_ai_search_finds_a_registration_number_without_calling_the_llm():
+    from unittest.mock import patch
+
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Norra grinden", "marks": "Silver Volvo, Reg.nr KRN482"},
+        )
+
+    client = create_app().test_client()
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        resp = client.get("/summary/ai?q=KRN482")
+
+    mock_urlopen.assert_not_called()
+    assert resp.status_code == 200
+    assert b"KRN482" in resp.data
+    assert "Norra grinden".encode() in resp.data
+
+
+def test_summary_ai_search_shows_no_hits_message_for_an_unmatched_query():
+    client = create_app().test_client()
+    resp = client.get("/summary/ai?q=NOSUCHPLATE")
+
+    assert resp.status_code == 200
+    assert "Inga träffar".encode() in resp.data
+
+
+def test_summary_ai_search_box_is_empty_with_no_query():
+    client = create_app().test_client()
+    resp = client.get("/summary/ai")
+
+    assert resp.status_code == 200
+    assert b"Inga tr\xc3\xa4ffar" not in resp.data
+
+
 def test_summary_ai_chat_saves_the_question_immediately_without_calling_ollama():
     """The question must land in the session on its own, fast request --
     see summary_ai's docstring for why: asking and answering used to be

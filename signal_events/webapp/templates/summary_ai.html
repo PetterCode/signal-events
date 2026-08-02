@@ -11,6 +11,55 @@
   </p>
 
   <div class="card">
+    <h3>Snabbsökning</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Enkel textsökning direkt i databasen (inte AI-analys) &mdash; för
+      t.ex. ett registreringsnummer eller annat kännetecken. Söker i
+      plats, objekt, aktivitet, kännetecken, rapporterad av, nästa steg
+      och originaltext, i alla sparade händelser (även från angränsande
+      enheter).
+    </p>
+    <form method="get" action="{{ url_for('events.summary_ai') }}">
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <input type="text" name="q" value="{{ search_query }}"
+               placeholder="t.ex. ABC123" style="width:auto;flex:1;margin-top:0">
+        <button type="submit" class="btn-secondary">Sök</button>
+      </div>
+    </form>
+
+    {% if search_query %}
+      {% if not search_results %}
+        <p style="color:#666">Inga träffar för &quot;{{ search_query }}&quot;.</p>
+      {% else %}
+        <table>
+          <thead>
+            <tr>
+              <th>TNR</th><th>Tid</th><th>Plats</th><th>Objekt</th><th>Kännetecken</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in search_results %}
+              <tr>
+                <td class="mono">{{ event_tnr(event.event_time, event.created_at) }}</td>
+                <td>{{ event.event_time or "—" }}</td>
+                <td>{{ event.place or "—" }}</td>
+                <td>{{ event.object or "—" }}</td>
+                <td>{{ event.marks or "—" }}</td>
+                <td>
+                  <a href="{{ url_for('events.event_detail', event_id=event.id) }}">Öppna</a>
+                  {% if event.source_unit %}
+                    <span class="badge badge-adjacent">från {{ event.source_unit }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  <div class="card">
     <div class="chat-log">
       {% if not chat_history %}
         <p class="chat-empty">

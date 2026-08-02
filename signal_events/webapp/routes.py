@@ -1815,9 +1815,15 @@ def summary_ai():
     (`pending` below) and resumes waiting for it automatically."""
     history = session.get(_AI_CHAT_SESSION_KEY, [])
     pending = bool(history) and history[-1]["role"] == "user"
+
+    search_query = request.args.get("q", "").strip()
+    with db.get_connection() as conn:
+        search_results = db.search_events(conn, search_query) if search_query else []
+
     return render_template(
         "summary_ai.html", chat_history=history, pending=pending,
         failed=pending and session.get(_AI_CHAT_FAILED_KEY, False),
+        search_query=search_query, search_results=search_results,
     )
 
 

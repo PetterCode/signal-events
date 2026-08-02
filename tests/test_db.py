@@ -921,6 +921,90 @@ def test_list_events_own_only_excludes_events_with_a_source_unit():
         assert len(rows) == 2
 
 
+def test_search_events_finds_a_registration_number_in_marks():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9011, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        match_id = db.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Norra grinden", "marks": "Silver Volvo, Reg.nr KRN482"},
+        )
+        db.insert_event(conn, message_id=message_id, fields={"place": "Södra grinden"})
+
+        rows = db.search_events(conn, "KRN482")
+        assert [r["id"] for r in rows] == [match_id]
+
+
+def test_search_events_is_case_insensitive_and_matches_a_substring():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9012, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        match_id = db.insert_event(
+            conn, message_id=message_id, fields={"marks": "Reg.nr KRN482"},
+        )
+
+        rows = db.search_events(conn, "krn")
+        assert [r["id"] for r in rows] == [match_id]
+
+
+def test_search_events_searches_place_object_activity_reported_by_next_steps_and_raw_text():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9013, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        ids = {
+            "place": db.insert_event(conn, message_id=message_id, fields={"place": "Findme plats"}),
+            "object": db.insert_event(conn, message_id=message_id, fields={"object": "Findme objekt"}),
+            "activity": db.insert_event(conn, message_id=message_id, fields={"activity": "Findme aktivitet"}),
+            "reported_by": db.insert_event(
+                conn, message_id=message_id, fields={"reported_by": "Findme rapportör"}
+            ),
+            "next_steps": db.insert_event(
+                conn, message_id=message_id, fields={"next_steps": "Findme åtgärd"}
+            ),
+            "raw_text": db.insert_event(conn, message_id=message_id, fields={"raw_text": "Findme text"}),
+        }
+
+        rows = db.search_events(conn, "Findme")
+        assert {r["id"] for r in rows} == set(ids.values())
+
+
+def test_search_events_returns_no_results_for_a_blank_query():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9014, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db.insert_event(conn, message_id=message_id, fields={"place": "Norra grinden"})
+
+        assert db.search_events(conn, "") == []
+        assert db.search_events(conn, "   ") == []
+
+
+def test_search_events_includes_matches_from_adjacent_units():
+    """Unlike list_events(own_only=True), a plate/keyword lookup should
+    surface a hit regardless of which unit logged it -- an adjacent
+    unit's sighting of the same vehicle is exactly the kind of match a
+    guard is trying to find."""
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9015, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        adjacent_id = db.insert_event(
+            conn, message_id=message_id,
+            fields={"marks": "KRN482", "source_unit": "2.Pluton"},
+        )
+
+        rows = db.search_events(conn, "KRN482")
+        assert [r["id"] for r in rows] == [adjacent_id]
+
+
 def test_list_events_with_position_include_adjacent_false_excludes_adjacent_events():
     with db.get_connection() as conn:
         message_id = db.insert_message(
