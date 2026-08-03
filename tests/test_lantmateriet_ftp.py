@@ -141,6 +141,66 @@ def test_extract_area_to_cache_treats_a_hung_gdal_call_as_a_failed_zoom(monkeypa
     assert written == zoom10_total
 
 
+def test_extract_zoom_level_splits_a_large_zoom_into_row_band_sub_batches(monkeypatch, tmp_path):
+    """Regression: a whole zoom level used to be fetched in one
+    gdal_translate call, however large -- for the biggest zoom levels that
+    meant the on-disk tile count (what Inställningar's progress readout
+    reads) sat completely still for as long as an hour, indistinguishable
+    from a hang, and restarting mid-fetch threw away the whole zoom's
+    progress. A big-enough area must now be split into multiple smaller
+    row-band calls instead of a single one covering everything."""
+    monkeypatch.setattr(lantmateriet_ftp, "gdal_available", lambda: True)
+    monkeypatch.setattr(lantmateriet_ftp, "_TARGET_TILES_PER_BATCH", 10)
+    calls = []
+
+    def fake_run(args, capture_output=None, text=None, timeout=None):
+        calls.append(args)
+        width, height = int(args[args.index("-outsize") + 1]), int(args[args.index("-outsize") + 2])
+        Image.new("RGBA", (width, height), (10, 20, 30, 255)).save(args[-1], format="PNG")
+        return subprocess.CompletedProcess(args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(lantmateriet_ftp.subprocess, "run", fake_run)
+
+    written, failed = lantmateriet_ftp.extract_area_to_cache(59.3, 18.0, 15, 12, 12, tmp_path)
+
+    total = tiles.expected_tile_count(59.3, 18.0, 15, 12, 12)
+    assert written == total
+    assert failed == 0
+    assert tiles.cached_tile_count(tmp_path) == total
+    # A single zoom level this size must have taken more than one call.
+    assert len(calls) > 1
+
+
+def test_extract_zoom_level_resumes_only_the_bands_still_missing(monkeypatch, tmp_path):
+    """A zoom level split across several row bands is resumable at the
+    band level, not just all-or-nothing per zoom -- re-running after some
+    bands already succeeded (e.g. the app was restarted mid-zoom) must
+    only re-fetch the bands still missing."""
+    monkeypatch.setattr(lantmateriet_ftp, "gdal_available", lambda: True)
+    monkeypatch.setattr(lantmateriet_ftp, "_TARGET_TILES_PER_BATCH", 10)
+    calls = []
+
+    def fake_run(args, capture_output=None, text=None, timeout=None):
+        calls.append(args)
+        width, height = int(args[args.index("-outsize") + 1]), int(args[args.index("-outsize") + 2])
+        Image.new("RGBA", (width, height), (10, 20, 30, 255)).save(args[-1], format="PNG")
+        return subprocess.CompletedProcess(args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(lantmateriet_ftp.subprocess, "run", fake_run)
+
+    written, failed = lantmateriet_ftp.extract_area_to_cache(59.3, 18.0, 15, 12, 12, tmp_path)
+    assert failed == 0
+    first_run_calls = len(calls)
+    assert first_run_calls > 1
+
+    # Second run against the same (now fully cached) area must make no
+    # gdal_translate calls at all.
+    written_again, failed_again = lantmateriet_ftp.extract_area_to_cache(59.3, 18.0, 15, 12, 12, tmp_path)
+    assert written_again == 0
+    assert failed_again == 0
+    assert len(calls) == first_run_calls
+
+
 def test_extract_area_to_cache_reports_progress(monkeypatch, tmp_path):
     monkeypatch.setattr(lantmateriet_ftp, "gdal_available", lambda: True)
     monkeypatch.setattr(lantmateriet_ftp.subprocess, "run", _fake_gdal_translate_factory())

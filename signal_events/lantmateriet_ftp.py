@@ -69,30 +69,36 @@ def _tile_to_meters(x: int, y: int, zoom: int) -> tuple[float, float]:
     return x * tile_size_m - _MERCATOR_ORIGIN, _MERCATOR_ORIGIN - y * tile_size_m
 
 
-def _extract_zoom_level(
-    center_lat: float, center_lon: float, radius_km: float, zoom: int, cache_dir: Path,
-    geopackage_path: str,
-) -> int:
-    """Extracts every tile for one zoom level in a single gdal_translate
-    call (batching -- not one call per tile -- is what makes this remotely
-    practical, see the module docstring), then slices the result into the
-    individual z/x/y files tiles.tile_path expects. Returns how many tiles
-    were written (0 if the whole zoom was already cached and skipped)."""
-    x_min, x_max, y_min, y_max = tiles._tile_bounds(center_lat, center_lon, radius_km, zoom)
-    if all(
-        tiles.tile_path(cache_dir, zoom, x, y).exists()
-        for x in range(x_min, x_max + 1) for y in range(y_min, y_max + 1)
-    ):
-        return 0
+# A zoom level's tiles are fetched in row-band sub-batches of roughly this
+# many tiles each, rather than one gdal_translate call for the entire zoom.
+# At the ~1.85 s/tile this module's docstring measures for a real batched
+# fetch, that keeps a single call to a few minutes. Fetching a whole large
+# zoom level (the biggest can be several thousand tiles) in one call meant
+# the on-disk tile count -- which is also what Inställningar's "X av Y
+# kartrutor cachade" progress readout reads -- sat completely still for as
+# long as an hour at a stretch, indistinguishable from an actual hang to
+# someone watching it; and restarting during that stretch (as a "why isn't
+# this doing anything" reaction) threw away the whole zoom's progress
+# instead of just the one band in flight. Banding also tightens the
+# subprocess timeout below to match, so a truly dead connection is caught
+# much sooner than waiting out a whole zoom's worst-case duration.
+_TARGET_TILES_PER_BATCH = 250
 
+
+def _extract_row_band(
+    zoom: int, x_min: int, x_max: int, y_min: int, y_max: int, cache_dir: Path, geopackage_path: str,
+) -> int:
+    """Extracts one row-band of a zoom level in a single gdal_translate
+    call, then slices the result into the individual z/x/y files
+    tiles.tile_path expects. Returns how many tiles were written."""
     ulx, uly = _tile_to_meters(x_min, y_min, zoom)
     lrx, lry = _tile_to_meters(x_max + 1, y_max + 1, zoom)
     width = (x_max - x_min + 1) * _TILE_SIZE
     height = (y_max - y_min + 1) * _TILE_SIZE
-
-    tmp_path = cache_dir / f"_lantmateriet_ftp_tmp_zoom{zoom}.png"
-    tmp_path.parent.mkdir(parents=True, exist_ok=True)
     tile_count = (x_max - x_min + 1) * (y_max - y_min + 1)
+
+    tmp_path = cache_dir / f"_lantmateriet_ftp_tmp_zoom{zoom}_y{y_min}.png"
+    tmp_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         try:
             # /vsicurl/ reads this batch's byte ranges from Lantmäteriet's
@@ -115,9 +121,11 @@ def _extract_zoom_level(
                 capture_output=True, text=True, timeout=max(60, tile_count * 5),
             )
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"gdal_translate timed out for zoom {zoom}") from exc
+            raise RuntimeError(f"gdal_translate timed out for zoom {zoom}, rows {y_min}-{y_max}") from exc
         if result.returncode != 0:
-            raise RuntimeError(f"gdal_translate failed for zoom {zoom}: {result.stderr.strip()}")
+            raise RuntimeError(
+                f"gdal_translate failed for zoom {zoom}, rows {y_min}-{y_max}: {result.stderr.strip()}"
+            )
 
         written = 0
         with Image.open(tmp_path) as img:
@@ -135,6 +143,41 @@ def _extract_zoom_level(
         tmp_path.unlink(missing_ok=True)
 
 
+def _extract_zoom_level(
+    center_lat: float, center_lon: float, radius_km: float, zoom: int, cache_dir: Path,
+    geopackage_path: str,
+) -> tuple[int, int]:
+    """Extracts one zoom level's tiles in row-band sub-batches (see
+    _TARGET_TILES_PER_BATCH) rather than one call for the whole zoom, so
+    progress lands on disk continuously instead of appearing frozen for a
+    long stretch and then jumping all at once. A band already fully cached
+    (e.g. from an earlier run that got interrupted partway through this
+    same zoom) is skipped -- finer-grained resumability than before, where
+    a zoom was all-or-nothing since it was written in one piece. A band
+    that fails (network hiccup, timeout) is skipped rather than aborting
+    the rest of the zoom, the same "don't lose everything over one
+    problem" principle already applied at the whole-run and per-tile
+    layers. Returns (written, failed_bands)."""
+    x_min, x_max, y_min, y_max = tiles._tile_bounds(center_lat, center_lon, radius_km, zoom)
+    width = x_max - x_min + 1
+    rows_per_batch = max(1, _TARGET_TILES_PER_BATCH // width)
+
+    written = 0
+    failed_bands = 0
+    for band_y_min in range(y_min, y_max + 1, rows_per_batch):
+        band_y_max = min(band_y_min + rows_per_batch - 1, y_max)
+        if all(
+            tiles.tile_path(cache_dir, zoom, x, y).exists()
+            for x in range(x_min, x_max + 1) for y in range(band_y_min, band_y_max + 1)
+        ):
+            continue
+        try:
+            written += _extract_row_band(zoom, x_min, x_max, band_y_min, band_y_max, cache_dir, geopackage_path)
+        except Exception:
+            failed_bands += 1
+    return written, failed_bands
+
+
 def extract_area_to_cache(
     center_lat: float,
     center_lon: float,
@@ -146,14 +189,12 @@ def extract_area_to_cache(
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> tuple[int, int]:
     """Fills the local tile cache for the given area from Lantmäteriet's
-    FTP-hosted GeoPackage, one zoom level at a time. Returns
-    (tiles_written, zoom_levels_failed). A zoom level already fully cached
-    is skipped entirely (idempotent/resumable, same spirit as
-    tiles.download_area, just at zoom-level rather than per-tile
-    granularity -- there's no way to resume a partially-fetched zoom level
-    without re-running the whole thing, since each zoom is one big
-    gdal_translate call). A single zoom level failing (e.g. a transient FTP
-    hiccup) doesn't stop the rest -- unlike tiles.download_area's
+    FTP-hosted GeoPackage, one zoom level at a time (each in turn split
+    into row-band sub-batches, see _extract_zoom_level). Returns
+    (tiles_written, failed_bands) -- idempotent/resumable at the
+    row-band granularity: re-running only re-fetches whatever's still
+    missing, whether that's a whole zoom or a handful of bands within one.
+    A failure doesn't stop the rest of the run -- unlike tiles.download_area's
     abort-on-block behaviour, there's no equivalent "you've been blocked"
     signal here, since this is a plain file server, not a rate-limited API."""
     if not gdal_available():
@@ -162,13 +203,14 @@ def extract_area_to_cache(
         )
 
     written = 0
-    failed_zooms = 0
+    failed = 0
     zooms = list(range(min_zoom, max_zoom + 1))
     for done, zoom in enumerate(zooms, start=1):
-        try:
-            written += _extract_zoom_level(center_lat, center_lon, radius_km, zoom, cache_dir, geopackage_path)
-        except Exception:
-            failed_zooms += 1
+        zoom_written, zoom_failed = _extract_zoom_level(
+            center_lat, center_lon, radius_km, zoom, cache_dir, geopackage_path
+        )
+        written += zoom_written
+        failed += zoom_failed
         if on_progress is not None:
             on_progress(done, len(zooms))
-    return written, failed_zooms
+    return written, failed

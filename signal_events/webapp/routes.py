@@ -595,14 +595,14 @@ def _download_tiles_in_background(
 ) -> None:
     try:
         if source == db.MAP_TILE_SOURCE_LANTMATERIET_FTP:
-            written, failed_zooms = lantmateriet_ftp.extract_area_to_cache(
+            written, failed_bands = lantmateriet_ftp.extract_area_to_cache(
                 center_lat, center_lon, radius_km,
                 config.MAP_CACHE_MIN_ZOOM, config.MAP_CACHE_MAX_ZOOM, config.TILE_CACHE_DIR,
             )
             with db.get_connection() as conn:
                 detail = f"källa=lantmateriet_ftp nya_rutor={written}"
-                if failed_zooms:
-                    detail += f" misslyckade_zoomnivåer={failed_zooms}"
+                if failed_bands:
+                    detail += f" misslyckade_delar={failed_bands}"
                 db.log_system_event(conn, "map_tiles_download_finished", detail)
             return
 
