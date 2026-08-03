@@ -13,7 +13,7 @@ def _fake_gdal_translate_factory():
     path, so the real PIL crop/slice logic downstream can be exercised
     against genuine image data rather than a mock."""
 
-    def fake_run(args, capture_output=None, text=None):
+    def fake_run(args, capture_output=None, text=None, timeout=None):
         width, height = int(args[args.index("-outsize") + 1]), int(args[args.index("-outsize") + 2])
         Image.new("RGBA", (width, height), (10, 20, 30, 255)).save(args[-1], format="PNG")
         return subprocess.CompletedProcess(args, returncode=0, stdout="", stderr="")
@@ -57,7 +57,7 @@ def test_extract_area_to_cache_skips_a_zoom_level_that_is_already_fully_cached(m
     monkeypatch.setattr(lantmateriet_ftp, "gdal_available", lambda: True)
     calls = []
 
-    def fake_run(args, capture_output=None, text=None):
+    def fake_run(args, capture_output=None, text=None, timeout=None):
         calls.append(args)
         width, height = int(args[args.index("-outsize") + 1]), int(args[args.index("-outsize") + 2])
         Image.new("RGBA", (width, height), (1, 2, 3, 255)).save(args[-1], format="PNG")
@@ -92,7 +92,7 @@ def test_extract_area_to_cache_counts_a_failed_zoom_without_aborting_the_rest(mo
     monkeypatch.setattr(lantmateriet_ftp, "gdal_available", lambda: True)
     calls = []
 
-    def fake_run(args, capture_output=None, text=None):
+    def fake_run(args, capture_output=None, text=None, timeout=None):
         calls.append(args)
         if len(calls) == 2:
             return subprocess.CompletedProcess(args, returncode=1, stdout="", stderr="simulated gdal failure")
@@ -109,6 +109,36 @@ def test_extract_area_to_cache_counts_a_failed_zoom_without_aborting_the_rest(mo
     zoom10_total = tiles.expected_tile_count(59.3, 18.0, 1, 10, 10)
     assert written == zoom10_total
     assert tiles.cached_tile_count(tmp_path) == zoom10_total
+
+
+def test_extract_area_to_cache_treats_a_hung_gdal_call_as_a_failed_zoom(monkeypatch, tmp_path):
+    """Regression: gdal_translate reads this batch's tiles over anonymous
+    FTP via /vsicurl/ -- with no timeout on the subprocess call, a single
+    stalled connection used to hang forever, which also meant the download
+    thread (and the lock it holds, see routes.py's _tile_download_lock)
+    never released, so the whole feature looked permanently stuck until
+    the app was restarted. A timed-out call must be treated the same as
+    any other failed zoom (see the "one bad zoom doesn't abort the rest"
+    test above) instead of propagating and blocking forever."""
+    monkeypatch.setattr(lantmateriet_ftp, "gdal_available", lambda: True)
+    calls = []
+
+    def fake_run(args, capture_output=None, text=None, timeout=None):
+        calls.append(args)
+        if len(calls) == 2:
+            raise subprocess.TimeoutExpired(cmd=args, timeout=timeout)
+        width, height = int(args[args.index("-outsize") + 1]), int(args[args.index("-outsize") + 2])
+        Image.new("RGBA", (width, height), (10, 20, 30, 255)).save(args[-1], format="PNG")
+        return subprocess.CompletedProcess(args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(lantmateriet_ftp.subprocess, "run", fake_run)
+
+    written, failed = lantmateriet_ftp.extract_area_to_cache(59.3, 18.0, 1, 10, 11, tmp_path)
+
+    assert failed == 1
+    assert len(calls) == 2
+    zoom10_total = tiles.expected_tile_count(59.3, 18.0, 1, 10, 10)
+    assert written == zoom10_total
 
 
 def test_extract_area_to_cache_reports_progress(monkeypatch, tmp_path):

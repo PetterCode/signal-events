@@ -92,17 +92,30 @@ def _extract_zoom_level(
 
     tmp_path = cache_dir / f"_lantmateriet_ftp_tmp_zoom{zoom}.png"
     tmp_path.parent.mkdir(parents=True, exist_ok=True)
+    tile_count = (x_max - x_min + 1) * (y_max - y_min + 1)
     try:
-        result = subprocess.run(
-            [
-                "gdal_translate", "-q",
-                "-projwin", str(ulx), str(uly), str(lrx), str(lry),
-                "-outsize", str(width), str(height),
-                "-of", "PNG",
-                geopackage_path, str(tmp_path),
-            ],
-            capture_output=True, text=True,
-        )
+        try:
+            # /vsicurl/ reads this batch's byte ranges from Lantmäteriet's
+            # anonymous FTP server over the network -- with no timeout, a
+            # single stalled connection hangs this call (and the download
+            # thread holding _tile_download_lock, see routes.py) forever,
+            # which is exactly what made a "stuck" download need a full
+            # app restart to recover from. 5s/tile (~2.7x the ~1.85s/tile
+            # this module's docstring documents for a real batched fetch)
+            # leaves headroom for a genuinely slow-but-working transfer
+            # while still bounding a truly dead connection to a finite wait.
+            result = subprocess.run(
+                [
+                    "gdal_translate", "-q",
+                    "-projwin", str(ulx), str(uly), str(lrx), str(lry),
+                    "-outsize", str(width), str(height),
+                    "-of", "PNG",
+                    geopackage_path, str(tmp_path),
+                ],
+                capture_output=True, text=True, timeout=max(60, tile_count * 5),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"gdal_translate timed out for zoom {zoom}") from exc
         if result.returncode != 0:
             raise RuntimeError(f"gdal_translate failed for zoom {zoom}: {result.stderr.strip()}")
 
