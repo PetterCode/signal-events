@@ -1659,6 +1659,52 @@ def test_save_map_center_route_persists_a_valid_center():
     assert lon == pytest.approx(18.06)
 
 
+def test_save_map_center_route_accepts_an_mgrs_reference():
+    client = create_app().test_client()
+    resp = client.post(
+        "/settings/map-center", data={"mgrs": "34VCL3339280121"}, follow_redirects=True
+    )
+
+    assert resp.status_code == 200
+    assert "Kartcentrum sparat".encode() in resp.data
+    with db_module.get_connection() as conn:
+        lat, lon = db_module.get_map_center(conn)
+    assert lat == pytest.approx(59.326944, abs=1e-3)
+    assert lon == pytest.approx(18.071667, abs=1e-3)
+
+
+def test_save_map_center_route_rejects_an_invalid_mgrs_reference():
+    client = create_app().test_client()
+    resp = client.post(
+        "/settings/map-center", data={"mgrs": "not a grid reference"}, follow_redirects=True
+    )
+
+    assert resp.status_code == 200
+    assert "Ogiltig MGRS-referens".encode() in resp.data
+    with db_module.get_connection() as conn:
+        assert db_module.has_custom_map_center(conn) is False
+
+
+def test_save_map_center_route_mgrs_field_takes_precedence_over_lat_lon():
+    """Regression: a Kartcentrum form now offers both an MGRS field and
+    separate lat/lon fields (see the "make it possible to set Kartcentrum
+    either in MGRS or lat/long" feature) -- if a user fills in MGRS but a
+    stale lat/lon value is still sitting in the form (e.g. left over from
+    the page's own pre-fill), MGRS must be the one that's saved."""
+    client = create_app().test_client()
+    resp = client.post(
+        "/settings/map-center",
+        data={"mgrs": "34VCL3339280121", "lat": "0", "lon": "0"},
+        follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        lat, lon = db_module.get_map_center(conn)
+    assert lat == pytest.approx(59.326944, abs=1e-3)
+    assert lon == pytest.approx(18.071667, abs=1e-3)
+
+
 def test_settings_page_shows_rensa_handelselogg_directly_below_rensa_allt():
     client = create_app().test_client()
     resp = client.get("/settings")
@@ -1750,7 +1796,8 @@ def test_settings_page_shows_kartcentrum_as_mgrs_once_a_center_is_set():
     resp = client.get("/settings")
 
     assert resp.status_code == 200
-    assert "MGRS: 34VCL".encode() in resp.data
+    assert 'id="map_mgrs"'.encode() in resp.data
+    assert 'value="34VCL3339280121"'.encode() in resp.data
 
 
 def test_settings_page_shows_the_config_default_center_when_none_is_set():
@@ -1758,7 +1805,7 @@ def test_settings_page_shows_the_config_default_center_when_none_is_set():
     resp = client.get("/settings")
 
     assert resp.status_code == 200
-    assert b"MGRS:" in resp.data
+    assert 'id="map_mgrs"'.encode() in resp.data
     assert "Inget kartcentrum sparat än".encode() in resp.data
     assert b"Rensa kartcentrum" not in resp.data
 

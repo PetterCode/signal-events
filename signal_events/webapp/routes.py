@@ -465,24 +465,44 @@ def save_ollama_port():
     return redirect(url_for("events.settings"))
 
 
+def _valid_map_center_latlon(lat: float, lon: float) -> bool:
+    # ±85.0511... (not ±90) is the actual usable range: it's where Web
+    # Mercator itself -- the projection tiles.py's tile math assumes --
+    # stops being defined (the pole is an asymptote, not a point on the
+    # map), the same limit Leaflet/OSM/Google Maps all clamp to. A center
+    # inside ±90 but outside this would crash every tile-count/tile-cache
+    # computation on this page.
+    return -85.0511 <= lat <= 85.0511 and -180 <= lon <= 180
+
+
 @bp.route("/settings/map-center", methods=["POST"])
 def save_map_center():
+    mgrs_raw = request.form.get("mgrs", "").strip()
+    # MGRS wins if both are filled in -- same precedence extract_position()
+    # uses when parsing a report, and it saves re-typing the lat/lon
+    # fields just because a grid reference was already at hand.
+    if mgrs_raw:
+        latlon = coordinates.extract_mgrs_latlon(mgrs_raw)
+        if latlon is None or not _valid_map_center_latlon(*latlon):
+            flash("Ogiltig MGRS-referens -- t.ex. 33VVN1234567890.", "error")
+            return redirect(url_for("events.settings"))
+        lat, lon = latlon
+        with db.get_connection() as conn:
+            db.set_map_center(conn, lat, lon)
+        flash(f"Kartcentrum sparat ({lat:.5f}, {lon:.5f}).")
+        return redirect(url_for("events.settings"))
+
     lat_raw = request.form.get("lat", "").strip()
     lon_raw = request.form.get("lon", "").strip()
     try:
         lat, lon = float(lat_raw), float(lon_raw)
-        # ±85.0511... (not ±90) is the actual usable range: it's where
-        # Web Mercator itself -- the projection tiles.py's tile math
-        # assumes -- stops being defined (the pole is an asymptote, not
-        # a point on the map), the same limit Leaflet/OSM/Google Maps
-        # all clamp to. A center inside ±90 but outside this would crash
-        # every tile-count/tile-cache computation on this page.
-        if not (-85.0511 <= lat <= 85.0511 and -180 <= lon <= 180):
+        if not _valid_map_center_latlon(lat, lon):
             raise ValueError
     except ValueError:
         flash(
-            "Ogiltig position -- ange latitud (-85.05 till 85.05) och "
-            "longitud (-180 till 180), t.ex. 59.3300, 18.0600.", "error",
+            "Ogiltig position -- ange en MGRS-referens, eller latitud "
+            "(-85.05 till 85.05) och longitud (-180 till 180), t.ex. "
+            "59.3300, 18.0600.", "error",
         )
     else:
         with db.get_connection() as conn:
