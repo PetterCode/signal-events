@@ -18,6 +18,19 @@ from signal_events.webapp import routes as routes_module
 from signal_events.webapp.routes import _build_ai_context, _clear_event_attachment_files
 
 
+def test_pages_include_a_viewport_meta_tag_for_mobile_rendering():
+    """Regression: base.html had no <meta name="viewport"> at all, so a
+    phone browser (the realistic way a guard actually uses this app in the
+    field) fell back to a desktop-width virtual viewport and rendered
+    every page zoomed out and hard to read/tap, instead of laying out at
+    the device's actual width."""
+    client = create_app().test_client()
+    resp = client.get("/events")
+
+    assert resp.status_code == 200
+    assert b'name="viewport" content="width=device-width, initial-scale=1"' in resp.data
+
+
 def test_clear_event_attachment_files_leaves_adjacent_subdir_alone(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ATTACHMENTS_DIR", tmp_path)
 
