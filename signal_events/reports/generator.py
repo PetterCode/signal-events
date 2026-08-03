@@ -181,10 +181,11 @@ def render_pdf(rows: list[dict[str, Any]], since_label: str) -> io.BytesIO:
 def _format_group_events(group: "analysis.RecurrenceGroup") -> list[str]:
     lines = []
     for ref in group.events:
-        tnr = naming.event_tnr(ref.event_time, ref.created_at)
-        # Don't repeat event_time if it's exactly what became the TNR --
-        # only show it separately when it's distinct free text (the TNR
-        # was derived from created_at instead).
+        tnr = naming.event_tnr(ref.created_at)
+        # event_time (when the observation was made) is shown alongside
+        # TNR (when the app received the report) since the two now always
+        # come from different timestamps -- skip it only in the rare case
+        # it happens to read identically to the TNR already shown.
         extras = [ref.event_time] if ref.event_time and ref.event_time.strip() != tnr else []
         extras.append(ref.place)
         parts = [p for p in extras if p]

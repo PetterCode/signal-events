@@ -212,7 +212,7 @@ def _find_severe_indicators(events: list[sqlite3.Row]) -> tuple[int, int, int, l
     explosive devices, and signs of attempted sabotage. Returns
     (armed_sightings, explosive_sightings, sabotage_sightings, reasons)."""
     def _tnr(e: sqlite3.Row) -> str:
-        return naming.event_tnr(e["event_time"], e["created_at"])
+        return naming.event_tnr(e["created_at"])
 
     armed = [e for e in events if any(k in _event_text(e) for k in _WEAPON_KEYWORDS)]
     explosive = [e for e in events if any(k in _event_text(e) for k in _EXPLOSIVE_KEYWORDS)]

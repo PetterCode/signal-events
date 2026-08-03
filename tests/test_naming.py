@@ -70,21 +70,7 @@ def test_parse_report_filename_returns_none_for_unrecognized_name():
     assert naming.parse_report_filename(None) is None
 
 
-def test_event_tnr_uses_event_time_when_already_valid_tnr():
-    # A 7S report's "Stund" field is already DDHHMM -- use it directly.
-    assert naming.event_tnr("221430", "2026-01-01T09:00:00+00:00") == "221430"
-
-
-def test_event_tnr_falls_back_to_created_at_for_free_text_event_time():
-    assert naming.event_tnr("vid middagstid", "2026-07-22T14:30:00+00:00") == "221430"
-
-
-def test_event_tnr_falls_back_to_created_at_when_event_time_missing():
-    assert naming.event_tnr(None, "2026-07-22T14:30:00+00:00") == "221430"
-    assert naming.event_tnr("", "2026-07-22T14:30:00+00:00") == "221430"
-
-
-def test_event_tnr_rejects_out_of_range_lookalikes():
-    # "999999" isn't a valid day/hour/minute -- must fall back to created_at,
-    # not be trusted just because it's six digits.
-    assert naming.event_tnr("999999", "2026-07-22T14:30:00+00:00") == "221430"
+def test_event_tnr_is_derived_from_created_at_regardless_of_event_time():
+    # TNR identifies when the app itself received the report, not when the
+    # observation was made -- that's the separately displayed event_time.
+    assert naming.event_tnr("2026-07-22T14:30:00+00:00") == "221430"

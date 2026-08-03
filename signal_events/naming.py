@@ -15,7 +15,6 @@ from typing import Optional
 
 _UNSAFE_CHARS_RE = re.compile(r"[^A-Za-z0-9åäöÅÄÖ_-]+")
 _FILENAME_RE = re.compile(r"^(?P<unit>.+)_(?P<tnr>\d{6})_(?P<type>.+)\.(?P<ext>[^.]+)$")
-_VALID_TNR_RE = re.compile(r"^(?:0[1-9]|[12]\d|3[01])(?:[01]\d|2[0-3])[0-5]\d$")
 
 
 def sanitize_filename_part(value: str, fallback: str) -> str:
@@ -43,19 +42,17 @@ def build_report_filename(
     return f"{unit_part}_{tnr}_{type_part}.{ext}"
 
 
-def event_tnr(event_time: Optional[str], created_at: str) -> str:
-    """A DDHHMM identifier for an event -- its own `event_time` if that's
-    already in valid TNR format (as it is for the "Stund" field of a
-    properly labeled 7S report), otherwise derived from when it was
-    recorded. Used to identify events by a meaningful timestamp instead
-    of an arbitrary database id, the same convention used for generated
-    report filenames above. Not guaranteed unique (TNR has no month/year,
-    same tradeoff already accepted for report filenames) -- for anything
-    that needs a stable reference, the database id is still what backs
-    the actual link/URL; this is only ever the displayed label."""
-    candidate = (event_time or "").strip()
-    if _VALID_TNR_RE.match(candidate):
-        return candidate
+def event_tnr(created_at: str) -> str:
+    """A DDHHMM identifier for an event, from when the app itself received
+    it (`created_at`) -- distinct from the event's own `event_time` (the
+    "Stund" field of a 7S report, i.e. when the observation was actually
+    made), which is shown separately as-is. Used to identify events by a
+    meaningful timestamp instead of an arbitrary database id, the same
+    convention used for generated report filenames above. Not guaranteed
+    unique (TNR has no month/year, same tradeoff already accepted for
+    report filenames) -- for anything that needs a stable reference, the
+    database id is still what backs the actual link/URL; this is only
+    ever the displayed label."""
     return generate_tnr(datetime.fromisoformat(created_at))
 
 

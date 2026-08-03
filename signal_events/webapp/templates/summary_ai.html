@@ -40,7 +40,7 @@
           <tbody>
             {% for event in search_results %}
               <tr>
-                <td class="mono">{{ event_tnr(event.event_time, event.created_at) }}</td>
+                <td class="mono">{{ event_tnr(event.created_at) }}</td>
                 <td>{{ event.event_time or "—" }}</td>
                 <td>{{ event.place or "—" }}</td>
                 <td>{{ event.object or "—" }}</td>

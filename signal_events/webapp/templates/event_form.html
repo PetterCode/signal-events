@@ -156,11 +156,10 @@
   </script>
   <script>
     document.getElementById("event-time-now-btn").addEventListener("click", function () {
-      // Day-hour-minute, the same "Stund"/TNR date-time-group format
-      // used everywhere else an event's time is shown (naming.py's
-      // generate_tnr) -- filling that directly, not just a clock time,
-      // means the event's own TNR reflects when it actually happened
-      // instead of falling back to when it was typed in.
+      // Day-hour-minute, the same "Stund" date-time-group format used
+      // throughout the app (naming.py's generate_tnr) -- so the typed-in
+      // observation time reads consistently with every other Tid field,
+      // not just a plain clock time.
       var now = new Date();
       var dd = String(now.getDate()).padStart(2, "0");
       var hh = String(now.getHours()).padStart(2, "0");

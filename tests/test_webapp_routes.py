@@ -2457,28 +2457,29 @@ def test_events_list_shows_a_tnr_column_before_the_tid_column():
     assert ">270600<" in body
 
 
-def test_events_list_orders_by_tnr_not_by_created_at():
-    """Sensor-reported events (and any event with an accurate Stund) can
-    arrive out of ingestion order relative to created_at -- the list must
-    still show them by TNR (when they actually happened), newest first,
-    not by when they were logged into the database."""
+def test_events_list_orders_by_created_at_not_by_event_time():
+    """TNR identifies when the app received a report (created_at), not
+    when the observation was made (event_time) -- so the list, which is
+    labeled by TNR, must also order by created_at, newest first, even
+    when that disagrees with the events' own event_time."""
     with db_module.get_connection() as conn:
         message_id_a = db_module.insert_message(
             conn, signal_timestamp=1, sender_number=None, sender_name=None,
             body="text", raw_json=json.dumps({}),
         )
         event_a = db_module.insert_event(
-            conn, message_id=message_id_a, fields={"event_time": "270600", "place": "A"}
+            conn, message_id=message_id_a, fields={"event_time": "270600", "place": "Norra grinden"}
         )
         message_id_b = db_module.insert_message(
             conn, signal_timestamp=2, sender_number=None, sender_name=None,
             body="text", raw_json=json.dumps({}),
         )
         event_b = db_module.insert_event(
-            conn, message_id=message_id_b, fields={"event_time": "270900", "place": "B"}
+            conn, message_id=message_id_b, fields={"event_time": "270900", "place": "Södra vägen"}
         )
-        # A's created_at is later than B's -- the opposite of their TNR
-        # order -- so this only passes if the list actually sorts by TNR.
+        # A's created_at is later than B's -- the opposite of their
+        # event_time order -- so this only passes if the list actually
+        # sorts by created_at.
         conn.execute(
             "UPDATE events SET created_at = '2026-01-02T10:00:00+00:00' WHERE id = ?", (event_a,)
         )
@@ -2490,4 +2491,6 @@ def test_events_list_orders_by_tnr_not_by_created_at():
     resp = client.get("/events?since=all")
     text = resp.data.decode()
 
-    assert text.index("270900") < text.index("270600")
+    # A's created_at is newer, so it must appear first even though its
+    # event_time ("270600") is earlier than B's ("270900").
+    assert text.index("Norra grinden") < text.index("Södra vägen")

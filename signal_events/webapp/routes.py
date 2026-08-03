@@ -895,7 +895,7 @@ def map_view():
             "id": e["id"],
             "lat": e["lat"],
             "lon": e["lon"],
-            "tnr": naming.event_tnr(e["event_time"], e["created_at"]),
+            "tnr": naming.event_tnr(e["created_at"]),
             "place": e["place"],
             "object": e["object"],
             "activity": e["activity"],
@@ -955,15 +955,9 @@ def list_events():
                 "is_duplicate": event["id"] in duplicate_ids,
             })
 
-    # Ordered by TNR (not created_at/ingestion order) so events from all
-    # sources -- including automated sensor triggers, which report their
-    # own precise DDHHMM Stund -- line up by when they actually happened,
-    # newest first. See naming.event_tnr for the same fallback used
-    # everywhere else an event's TNR is shown.
-    rows.sort(
-        key=lambda row: naming.event_tnr(row["event"]["event_time"], row["event"]["created_at"]),
-        reverse=True,
-    )
+    # Ordered by when the app received each report (created_at), newest
+    # first -- the same timestamp TNR itself now displays.
+    rows.sort(key=lambda row: row["event"]["created_at"], reverse=True)
 
     return render_template(
         "events_list.html", rows=rows, since=preset, review_filter=review_filter
@@ -1550,7 +1544,7 @@ def _build_ai_context() -> str:
     if not events:
         lines.append("Inga händelser sparade.")
     for e in events:
-        tnr = naming.event_tnr(e["event_time"], e["created_at"])
+        tnr = naming.event_tnr(e["created_at"])
         flags = []
         if e["needs_review"]:
             flags.append("ogranskad")

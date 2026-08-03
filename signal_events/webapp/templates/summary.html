@@ -162,7 +162,7 @@
             </ul>
             <div class="group-events">
               {% for ref in group.events %}
-                <a href="{{ url_for('events.event_detail', event_id=ref.id) }}">{{ event_tnr(ref.event_time, ref.created_at) }}{% if ref.place %} ({{ ref.place }}){% endif %}</a>
+                <a href="{{ url_for('events.event_detail', event_id=ref.id) }}">{{ event_tnr(ref.created_at) }}{% if ref.place %} ({{ ref.place }}){% endif %}</a>
               {% endfor %}
             </div>
           </div>

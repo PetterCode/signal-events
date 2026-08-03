@@ -180,8 +180,13 @@ def test_multiple_armed_sightings_reach_red():
 
 def test_severe_indicator_reasons_identify_events_by_tnr_not_database_id():
     with db.get_connection() as conn:
-        _add_event(conn, 1, place="Norra grinden", object="Civil",
-                   event_time="221430", marks="man beväpnad med gevär")
+        event_id = _add_event(conn, 1, place="Norra grinden", object="Civil",
+                               event_time="221430", marks="man beväpnad med gevär")
+        # TNR is when the app received the report (created_at), not the
+        # event's own event_time -- pin it down for a deterministic assertion.
+        conn.execute(
+            "UPDATE events SET created_at = '2026-07-22T14:30:00+00:00' WHERE id = ?", (event_id,)
+        )
         summary = analysis.build_summary(db.list_events(conn), "all")
 
     reason = next(r for r in summary.threat.reasons if "Beväpnad" in r)
