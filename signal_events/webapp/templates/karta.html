@@ -94,6 +94,10 @@
           maxZoom: maxZoom,
           attribution: "Kartkälla: se Inställningar &rarr; Kartleverantör",
         }).addTo(map);
+        // Metric only (imperial: false) -- the rest of the app (Kartcentrum
+        // radie, MGRS) is metric throughout, no reason for the scale bar
+        // to be the one exception.
+        L.control.scale({ position: "bottomright", imperial: false }).addTo(map);
 
         // Remembers the last pan/zoom across navigating away and back --
         // a per-browser viewport preference, not app data, so
