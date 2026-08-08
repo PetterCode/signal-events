@@ -464,7 +464,10 @@
           </p>
           <img src="{{ url_for('events.lan_qrcode') }}" alt="QR-kod till {{ lan_url }}"
                width="200" height="200" style="display:block">
-          <p class="mono" style="font-size:0.8rem">{{ lan_url }}</p>
+          <p style="margin-top:0.5rem">
+            Eller skriv in adressen för hand:<br>
+            <strong class="mono" style="font-size:1.1rem">{{ lan_url }}</strong>
+          </p>
         {% else %}
           <p style="font-size:0.85rem;color:#666">
             Servern är just nu bara nåbar från den här datorn
