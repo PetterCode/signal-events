@@ -44,7 +44,7 @@
       <input type="text" id="activity" name="activity">
 
       <label for="marks">Kännetecken</label>
-      <input type="text" id="marks" name="marks">
+      <textarea id="marks" name="marks" class="auto-grow" rows="1" style="min-height:2.2rem"></textarea>
       <div class="actions" style="margin-top:0.4rem">
         <button type="button" class="btn-secondary" id="add-person-btn">+ Lägg till person</button>
         <button type="button" class="btn-secondary" id="add-vehicle-btn">+ Lägg till fordon</button>
@@ -265,6 +265,13 @@
 
       function appendToMarks(text) {
         marksInput.value = marksInput.value ? marksInput.value + "; " + text : text;
+        // Kännetecken is itself a .auto-grow textarea now that a
+        // composed description can run well past one line -- setting
+        // .value directly (unlike someone typing) doesn't fire a native
+        // "input" event, so the auto-grow script's own listener would
+        // otherwise never see this change and the box would stay stuck
+        // at its old height.
+        marksInput.dispatchEvent(new Event("input", { bubbles: true }));
       }
 
       // Numbers each addition (Person 1, Person 2, ...) by scanning what's
