@@ -2411,21 +2411,88 @@ def test_summary_send_uses_the_configured_report_group_name():
     assert mock_send.call_args.args[0] == "Anpassad rapportgrupp"
 
 
-def test_summary_send_recurring_uses_the_configured_recurring_group_name():
+def test_entities_send_watchlist_uses_the_configured_recurring_group_name():
     from unittest.mock import patch
 
     from signal_events import signal_client
 
-    with db_module.get_connection() as conn:
-        db_module.set_recurring_group_name(conn, "Anpassad återkommande-grupp")
-
     client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Bevakad person"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+        db_module.set_recurring_group_name(conn, "Anpassad återkommande-grupp")
+        db_module.update_entity(conn, entity_id, {"watchlist": True})
+
     with patch.object(signal_client, "send_to_group_by_name") as mock_send:
-        resp = client.post("/summary/send-recurring", data={"since": "7d"})
+        resp = client.post("/entities/send-watchlist")
 
     assert resp.status_code == 302
     mock_send.assert_called_once()
     assert mock_send.call_args.args[0] == "Anpassad återkommande-grupp"
+
+
+def test_entities_send_watchlist_with_nothing_to_send_flashes_an_error():
+    from unittest.mock import patch
+
+    from signal_events import signal_client
+
+    client = create_app().test_client()
+    with patch.object(signal_client, "send_to_group_by_name") as mock_send:
+        resp = client.post("/entities/send-watchlist", follow_redirects=True)
+
+    assert resp.status_code == 200
+    mock_send.assert_not_called()
+    assert "Inga poster på bevakningslistan".encode() in resp.data
+
+
+def test_entities_send_watchlist_includes_entities_recurring_by_event_count_alone():
+    from unittest.mock import patch
+
+    from signal_events import signal_client
+
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X", "marks": "Fordon 1 (R – Registration: ABC123)"})
+    client.post("/events/new", data={"place": "Y", "marks": "Fordon 1 (R – Registration: ABC123)"})
+
+    with patch.object(signal_client, "send_to_group_by_name") as mock_send:
+        resp = client.post("/entities/send-watchlist")
+
+    assert resp.status_code == 302
+    mock_send.assert_called_once()
+
+
+def test_set_entity_watchlist_route_toggles_the_flag_and_redirects_to_the_same_filters():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Okänd"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    resp = client.post(
+        f"/entities/{entity_id}/watchlist", data={"watchlist": "1", "type": "person", "q": "kän"},
+    )
+    assert resp.status_code == 302
+    assert resp.headers["Location"].startswith("/entities?")
+    with db_module.get_connection() as conn:
+        assert db_module.get_entity(conn, entity_id)["watchlist"] == 1
+
+    resp = client.post(f"/entities/{entity_id}/watchlist", data={})
+    with db_module.get_connection() as conn:
+        assert db_module.get_entity(conn, entity_id)["watchlist"] == 0
+
+
+def test_entity_detail_post_saves_the_watchlist_checkbox():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Okänd"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    client.post(f"/entities/{entity_id}", data={"label": "Okänd", "watchlist": "1"})
+    with db_module.get_connection() as conn:
+        assert db_module.get_entity(conn, entity_id)["watchlist"] == 1
+
+    client.post(f"/entities/{entity_id}", data={"label": "Okänd"})
+    with db_module.get_connection() as conn:
+        assert db_module.get_entity(conn, entity_id)["watchlist"] == 0
 
 
 def test_settings_shows_no_qr_code_when_still_bound_to_localhost():

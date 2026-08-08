@@ -8,6 +8,12 @@
     {% if entity.source == "auto" %}
       <span class="badge badge-trivial">Automatiskt extraherad</span>
     {% endif %}
+    {% if linked_events|length >= 2 %}
+      <span class="badge badge-review">Återkommande ({{ linked_events|length }} händelser)</span>
+    {% endif %}
+    {% if entity.watchlist %}
+      <span class="badge badge-review">Bevakas</span>
+    {% endif %}
   </h1>
 
   <div class="card">
@@ -53,6 +59,12 @@
 
       <label for="notes">Anteckningar</label>
       <textarea id="notes" name="notes" class="auto-grow">{{ entity.notes or '' }}</textarea>
+
+      <label>
+        <input type="checkbox" name="watchlist" value="1" {{ "checked" if entity.watchlist else "" }}
+               style="width:auto;display:inline;vertical-align:middle">
+        Bevaka (inkludera i bevakningslistan oavsett antal länkade händelser)
+      </label>
 
       <div class="actions">
         <button type="submit">Spara</button>

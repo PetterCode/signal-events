@@ -10,6 +10,14 @@
   </p>
   <p>
     <a class="btn" href="{{ url_for('events.new_entity') }}">+ Lägg till manuellt</a>
+    <form method="post" action="{{ url_for('events.entities_send_watchlist') }}" style="display:inline">
+      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Skicka bevakningslista</button>
+    </form>
+  </p>
+  <p style="font-size:0.8rem;color:#666;margin-top:-0.5rem">
+    Bevakningslistan innehåller alla poster länkade till 2 eller fler
+    händelser, plus alla manuellt bevakade (kryssrutan "Bevaka" nedan) —
+    skickas till <strong>{{ recurring_group_name }}</strong>.
   </p>
 
   <div class="filters">
@@ -31,7 +39,8 @@
   <table>
     <thead>
       <tr>
-        <th></th><th>Typ</th><th>Namn/beteckning</th><th>Reg.nr</th><th>Källa</th><th>Länkade händelser</th><th></th>
+        <th></th><th>Typ</th><th>Namn/beteckning</th><th>Reg.nr</th><th>Källa</th><th>Länkade händelser</th>
+        <th>Bevaka</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -49,6 +58,15 @@
           <td class="mono">{{ e.registration or "—" }}</td>
           <td>{{ "Automatisk" if e.source == "auto" else "Manuell" }}</td>
           <td>{{ item.event_count }}</td>
+          <td>
+            <form method="post" action="{{ url_for('events.set_entity_watchlist', entity_id=e.id) }}"
+                  onsubmit="return true" style="margin:0">
+              {% if entity_type %}<input type="hidden" name="type" value="{{ entity_type }}">{% endif %}
+              {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+              <input type="checkbox" name="watchlist" value="1" style="width:auto"
+                     {{ "checked" if e.watchlist else "" }} onchange="this.form.submit()">
+            </form>
+          </td>
           <td><a href="{{ url_for('events.entity_detail', entity_id=e.id) }}">Öppna</a></td>
         </tr>
       {% endfor %}

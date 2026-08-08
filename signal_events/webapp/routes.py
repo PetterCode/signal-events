@@ -1413,8 +1413,25 @@ def list_entities():
 
     return render_template(
         "entities_list.html", entities=entities_view, entity_type=entity_type, query=query,
-        entity_type_labels=_ENTITY_TYPE_LABELS,
+        entity_type_labels=_ENTITY_TYPE_LABELS, recurring_group_name=_recurring_group_name(),
     )
+
+
+@bp.route("/entities/<int:entity_id>/watchlist", methods=["POST"])
+def set_entity_watchlist(entity_id: int):
+    """Per-row "Bevaka" checkbox on Personer, fordon och objekt -- each
+    row is its own tiny auto-submitting form (see entities_list.html), so
+    this only ever toggles one entity and redirects back to the same
+    filtered/searched view it came from."""
+    with db.get_connection() as conn:
+        if db.get_entity(conn, entity_id) is None:
+            abort(404)
+        db.update_entity(conn, entity_id, {"watchlist": bool(request.form.get("watchlist"))})
+    return redirect(url_for(
+        "events.list_entities",
+        type=request.form.get("type") or None,
+        q=request.form.get("q") or None,
+    ))
 
 
 @bp.route("/entities/new", methods=["GET", "POST"])
@@ -1473,6 +1490,7 @@ def entity_detail(entity_id: int):
                 updates = {
                     "label": label,
                     "notes": notes,
+                    "watchlist": bool(request.form.get("watchlist")),
                 }
                 if entity["entity_type"] == "vehicle":
                     registration = request.form.get("registration", "").strip() or None
@@ -1922,7 +1940,6 @@ def _render_summary_page(
         "summary.html", summary=summary_data, since=preset,
         include_unreviewed=include_unreviewed, unit_name=_unit_name(),
         report_group_name=report_group,
-        recurring_group_name=_recurring_group_name(),
         adjacent_reports_group_name=report_group,
         adjacent_rows=_adjacent_status_rows(preset),
         override=_threat_override_display(),
@@ -2076,33 +2093,38 @@ def summary_send():
     )
 
 
-@bp.route("/summary/send-recurring", methods=["POST"])
-def summary_send_recurring():
-    preset = request.form.get("since", "7d")
-    include_unreviewed = request.form.get("include_unreviewed") == "1"
+@bp.route("/entities/send-watchlist", methods=["POST"])
+def entities_send_watchlist():
+    """Sends a PDF of the bevakningslista -- every person/vehicle/object
+    linked to 2+ events (recurring, straight from the entities database)
+    plus every one manually flagged via a "Bevaka" checkbox -- to the
+    configured recurring-list Signal group. Replaces the old hotbild
+    "Skicka lista över återkommande" button, which built its list from
+    analysis.py's regex/Jaccard text clustering over raw events instead
+    of the entities database this tool now maintains."""
+    with db.get_connection() as conn:
+        rows = db.list_watchlist_entities(conn)
+        entries = [
+            {"entity": row, "events": db.list_events_for_entity(conn, row["id"])}
+            for row in rows
+        ]
 
-    summary_data = _compute_summary(preset, include_unreviewed)
-    buf = generator.render_recurring_pdf(summary_data, site_name=config.SITE_NAME)
-    total_groups = (
-        len(summary_data.vehicle_groups) + len(summary_data.person_groups)
-        + len(summary_data.other_groups)
-    )
-    caption = (
-        f"Återkommande fordon, personer och observationer – {config.SITE_NAME} "
-        f"– {total_groups} identifierade mönster"
-    )
-    filename = naming.build_report_filename(_unit_name(), "aterkommande", "pdf")
+    if not entries:
+        flash("Inga poster på bevakningslistan att skicka.", "error")
+        return redirect(url_for("events.list_entities"))
+
+    buf = generator.render_watchlist_pdf(entries, site_name=config.SITE_NAME)
+    caption = f"Bevakningslista – {config.SITE_NAME} – {len(entries)} poster"
+    filename = naming.build_report_filename(_unit_name(), "bevakningslista", "pdf")
     recurring_group = _recurring_group_name()
     try:
         _send_pdf_to_group(buf, caption, recurring_group, filename)
     except signal_client.SignalCliError as exc:
-        flash(f"Kunde inte skicka listan över återkommande till Signal: {exc}", "error")
+        flash(f"Kunde inte skicka bevakningslistan till Signal: {exc}", "error")
     else:
-        flash(f"Listan över återkommande skickad till Signal-gruppen '{recurring_group}'.")
+        flash(f"Bevakningslistan skickad till Signal-gruppen '{recurring_group}'.")
 
-    return redirect(
-        url_for("events.summary", since=preset, include_unreviewed=1 if include_unreviewed else 0)
-    )
+    return redirect(url_for("events.list_entities"))
 
 
 # Session key for the AI-analys chat's running conversation, and how many

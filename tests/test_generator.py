@@ -22,38 +22,57 @@ def _fake_summary():
     )
 
 
-def test_render_recurring_markdown_includes_group_sections():
-    text = generator.render_recurring_markdown(_fake_summary(), site_name="Kvarn")
+def _fake_watchlist_entries():
+    from signal_events import db
 
-    assert "Återkommande fordon" in text
-    assert "Återkommande personer" in text
-    assert "Övriga anmärkningsvärda observationer" in text
-    assert "Reg.nr ABC123" in text
+    with db.get_connection() as conn:
+        vehicle_id = db.insert_entity(
+            conn, entity_type="vehicle", label="Fordon 1", registration="ABC123",
+            attributes={"Registration": "ABC 123", "Colour": "Svart"}, source="auto",
+        )
+        person_id = db.insert_entity(
+            conn, entity_type="person", label="Civil, grön jacka",
+            attributes={"Colour": "grön jacka"}, source="manual",
+        )
+        db.update_entity(conn, person_id, {"watchlist": True})
+        vehicle = conn.execute(
+            "SELECT *, 2 AS event_count FROM entities WHERE id = ?", (vehicle_id,)
+        ).fetchone()
+        person = conn.execute(
+            "SELECT *, 1 AS event_count FROM entities WHERE id = ?", (person_id,)
+        ).fetchone()
+
+    event_row = {"id": 1, "created_at": "2026-01-01T10:00:00", "event_time": "10:00", "place": "Norra grinden"}
+    return [
+        {"entity": vehicle, "events": [event_row]},
+        {"entity": person, "events": []},
+    ]
+
+
+def test_render_watchlist_markdown_includes_type_sections():
+    text = generator.render_watchlist_markdown(_fake_watchlist_entries(), site_name="Kvarn")
+
+    assert "Fordon" in text
+    assert "Personer" in text
+    assert "Objekt" in text
+    assert "ABC123" in text
     assert "grön jacka" in text
     assert "Händelse 011000" in text  # event 1's TNR, derived from its created_at
     assert "Kvarn" in text
 
 
-def test_render_recurring_markdown_excludes_threat_level_and_score():
-    text = generator.render_recurring_markdown(_fake_summary(), site_name="Kvarn")
-
-    assert "Hotnivå" not in text
-    assert "GUL" not in text
-    assert "Motivering" not in text
-    assert "some reason" not in text  # threat-level reasons, not group reasons
+def test_render_watchlist_markdown_flags_manually_watchlisted_entries():
+    text = generator.render_watchlist_markdown(_fake_watchlist_entries(), site_name="Kvarn")
+    assert "bevakas manuellt" in text
 
 
-def test_render_recurring_markdown_empty_groups_says_none_identified():
-    empty_summary = analysis.Summary(
-        total_events=1, period_label="7d", vehicle_groups=[], person_groups=[],
-        other_groups=[], threat=analysis.ThreatAssessment("green", 0, ["ok"]),
-    )
-    text = generator.render_recurring_markdown(empty_summary, site_name="Kvarn")
+def test_render_watchlist_markdown_empty_list_says_none_identified():
+    text = generator.render_watchlist_markdown([], site_name="Kvarn")
     assert text.count("Inga identifierade.") == 3
 
 
-def test_render_recurring_pdf_produces_valid_pdf_bytes():
-    buf = generator.render_recurring_pdf(_fake_summary(), site_name="Kvarn")
+def test_render_watchlist_pdf_produces_valid_pdf_bytes():
+    buf = generator.render_watchlist_pdf(_fake_watchlist_entries(), site_name="Kvarn")
     data = buf.read()
     assert data.startswith(b"%PDF")
     assert len(data) > 100

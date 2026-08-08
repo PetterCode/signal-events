@@ -133,6 +133,11 @@ CREATE TABLE IF NOT EXISTS entities (
     photo_path TEXT, -- absolute path to one uploaded reference photo, see
                       -- webapp/routes.py's entity_photo/entity_photo_file;
                       -- manual only, never set by entities.py's parser
+    watchlist INTEGER NOT NULL DEFAULT 0, -- human-set "include in
+                      -- bevakningslista" flag (see
+                      -- webapp/routes.py's entities_list.html checkbox) --
+                      -- included in the sent watchlist report regardless
+                      -- of event_count, same as list_watchlist_entities
     source TEXT NOT NULL DEFAULT 'manual', -- 'auto' | 'manual' -- see
                                             -- entities.sync_event_entities
     created_at TEXT NOT NULL,
@@ -285,6 +290,7 @@ def init_db() -> None:
         _migrate_add_column(conn, "events", "source_unit", "TEXT")
         _migrate_add_column(conn, "users", "last_seen", "TEXT")
         _migrate_add_column(conn, "entities", "photo_path", "TEXT")
+        _migrate_add_column(conn, "entities", "watchlist", "INTEGER NOT NULL DEFAULT 0")
         _migrate_summary_log_identity_columns(conn)
 
 
@@ -1218,12 +1224,16 @@ def insert_entity(
 
 
 def update_entity(conn: sqlite3.Connection, entity_id: int, fields: dict[str, Any]) -> None:
-    columns = ["entity_type", "label", "registration", "attributes", "notes", "photo_path"]
+    columns = [
+        "entity_type", "label", "registration", "attributes", "notes", "photo_path", "watchlist",
+    ]
     updates = {k: v for k, v in fields.items() if k in columns}
     if not updates:
         return
     if "attributes" in updates and isinstance(updates["attributes"], dict):
         updates["attributes"] = json.dumps(updates["attributes"]) if updates["attributes"] else None
+    if "watchlist" in updates:
+        updates["watchlist"] = 1 if updates["watchlist"] else 0
     updates["updated_at"] = now_iso()
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     conn.execute(
@@ -1380,4 +1390,29 @@ def list_entities_seen_with(conn: sqlite3.Connection, entity_id: int) -> list[sq
            WHERE mine.entity_id = ?
            ORDER BY other.label""",
         (entity_id,),
+    ).fetchall()
+
+
+# Recurring, for the watchlist report below, means "linked to at least
+# this many distinct events" -- a plain database fact, unlike
+# analysis.py's RecurrenceGroup (regex/Jaccard text clustering over raw
+# event rows, used only for the separate hotbedömning threat score).
+WATCHLIST_MIN_EVENTS = 2
+
+
+def list_watchlist_entities(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Entities to include in the "Skicka bevakningslista" report (see
+    webapp/routes.py's entities_send_watchlist): every entity linked to
+    WATCHLIST_MIN_EVENTS+ events (recurring, by database fact alone) plus
+    every entity a human has manually flagged via the "Bevaka"
+    checkbox (entities.watchlist), regardless of its own event count.
+    Each row carries an extra `event_count` column."""
+    return conn.execute(
+        """SELECT entities.*, COUNT(entity_event_links.id) AS event_count
+           FROM entities
+           LEFT JOIN entity_event_links ON entity_event_links.entity_id = entities.id
+           GROUP BY entities.id
+           HAVING event_count >= ? OR entities.watchlist = 1
+           ORDER BY entities.entity_type, event_count DESC, entities.label""",
+        (WATCHLIST_MIN_EVENTS,),
     ).fetchall()

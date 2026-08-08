@@ -343,6 +343,52 @@ def test_prune_orphaned_auto_entities_only_removes_unlinked_auto_entities():
         assert db.get_entity(conn, manual_orphan_id) is not None
 
 
+# --- list_watchlist_entities --------------------------------------------------
+
+def test_list_watchlist_entities_includes_entities_linked_to_two_or_more_events():
+    with db.get_connection() as conn:
+        recurring_id = db.insert_entity(conn, entity_type="vehicle", label="Bil", registration="ABC123")
+        once_id = db.insert_entity(conn, entity_type="person", label="Person 1")
+        event_a = _make_event(conn, signal_timestamp=1)
+        event_b = _make_event(conn, signal_timestamp=2)
+        db.link_entity_to_event(conn, recurring_id, event_a, source="auto")
+        db.link_entity_to_event(conn, recurring_id, event_b, source="auto")
+        db.link_entity_to_event(conn, once_id, event_a, source="auto")
+
+        watchlisted = {row["id"] for row in db.list_watchlist_entities(conn)}
+        assert recurring_id in watchlisted
+        assert once_id not in watchlisted
+
+
+def test_list_watchlist_entities_includes_manually_flagged_entities_regardless_of_event_count():
+    with db.get_connection() as conn:
+        entity_id = db.insert_entity(conn, entity_type="object", label="Kikare")
+        db.update_entity(conn, entity_id, {"watchlist": True})
+
+        watchlisted = {row["id"] for row in db.list_watchlist_entities(conn)}
+        assert entity_id in watchlisted
+
+
+def test_list_watchlist_entities_excludes_entities_with_neither_recurrence_nor_flag():
+    with db.get_connection() as conn:
+        entity_id = db.insert_entity(conn, entity_type="object", label="Kikare")
+
+        watchlisted = {row["id"] for row in db.list_watchlist_entities(conn)}
+        assert entity_id not in watchlisted
+
+
+def test_list_watchlist_entities_reports_the_correct_event_count():
+    with db.get_connection() as conn:
+        entity_id = db.insert_entity(conn, entity_type="vehicle", label="Bil", registration="ABC123")
+        event_a = _make_event(conn, signal_timestamp=1)
+        event_b = _make_event(conn, signal_timestamp=2)
+        db.link_entity_to_event(conn, entity_id, event_a, source="auto")
+        db.link_entity_to_event(conn, entity_id, event_b, source="auto")
+
+        row = next(r for r in db.list_watchlist_entities(conn) if r["id"] == entity_id)
+        assert row["event_count"] == 2
+
+
 # --- cascading deletes/resets ------------------------------------------------
 
 def test_delete_event_prunes_an_orphaned_auto_entity_but_keeps_a_manual_one():

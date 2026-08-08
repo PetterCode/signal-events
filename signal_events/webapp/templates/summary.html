@@ -17,20 +17,12 @@
     {% endif %}
   </div>
 
-  <p>
-    <form method="post" action="{{ url_for('events.summary_send_recurring') }}" style="display:inline">
-      <input type="hidden" name="since" value="{{ since }}">
-      <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
-      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Skicka lista över återkommande</button>
-    </form>
-  </p>
-  <p style="font-size:0.8rem;color:#666;margin-top:-0.5rem">
-    Listan över återkommande fordon/personer/observationer (utan hotnivå)
-    skickas till <strong>{{ recurring_group_name }}</strong>.
-    &nbsp;·&nbsp;
+  <p style="font-size:0.8rem;color:#666">
     <a href="{{ url_for('events.summary_log') }}">Visa logg över tidigare hotbedömningar &rarr;</a>
     &nbsp;·&nbsp;
     <a href="{{ url_for('events.summary_ai') }}">Fråga AI-analys om underlaget &rarr;</a>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('events.list_entities') }}">Bevakningslista (personer, fordon, objekt) &rarr;</a>
   </p>
 
   <div class="card">

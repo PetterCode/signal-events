@@ -4,6 +4,7 @@ Runs entirely offline -- reportlab and Pillow are pure local libraries."""
 from __future__ import annotations
 
 import io
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -302,52 +303,94 @@ def render_summary_text(
     return "\n".join(lines)
 
 
-_RECURRING_DISCLAIMER = (
-    "Automatiskt genererad lista baserad på regelbaserad mönstermatchning "
-    "(inte AI/ML). Kontrollera alltid mot originalhändelserna innan åtgärd "
-    "vidtas."
+_WATCHLIST_DISCLAIMER = (
+    "Automatiskt genererad lista baserad direkt på registrerade personer, "
+    "fordon och objekt (inte AI/ML): de som är länkade till flera "
+    "händelser, eller manuellt markerade för bevakning. Kontrollera alltid "
+    "mot originalhändelserna innan åtgärd vidtas."
 )
 
+_WATCHLIST_TYPE_TITLES = [
+    ("person", "Personer"),
+    ("vehicle", "Fordon"),
+    ("object", "Objekt"),
+]
 
-def render_recurring_markdown(summary: "analysis.Summary", site_name: str) -> str:
-    """A focused list of recurring/suspicious vehicles, people, and other
-    observations only -- no threat-level badge or score, just the
-    correlated groups and their evidence. For the "Skicka lista över
-    återkommande" button."""
+
+def _watchlist_entry_heading(entry: dict[str, Any]) -> str:
+    entity = entry["entity"]
+    count = entity["event_count"]
+    heading = f"{entity['label']} ({count} {'händelse' if count == 1 else 'händelser'})"
+    if entity["watchlist"]:
+        heading += " — bevakas manuellt"
+    return heading
+
+
+def _watchlist_entry_details(entry: dict[str, Any]) -> str | None:
+    """A compact one-line summary of an entity's stored attributes (Reg.nr
+    for a vehicle, Namn/Alias for a person, ...) -- whatever entities.py's
+    parser or a human filled in, same key/value pairs shown in full on the
+    entity's own page."""
+    entity = entry["entity"]
+    parts = []
+    if entity["registration"]:
+        parts.append(f"Reg.nr: {entity['registration']}")
+    attributes = json.loads(entity["attributes"]) if entity["attributes"] else {}
+    for key, value in attributes.items():
+        if key == "Registration":
+            continue  # already shown above, normalized, as Reg.nr
+        parts.append(f"{key}: {value}")
+    if entity["notes"]:
+        parts.append(entity["notes"])
+    return ", ".join(parts) if parts else None
+
+
+def _format_entity_events(events: list[Any]) -> list[str]:
+    lines = []
+    for event in events:
+        tnr = naming.event_tnr(event["created_at"])
+        extras = [event["event_time"]] if event["event_time"] and event["event_time"].strip() != tnr else []
+        extras.append(event["place"])
+        parts = [p for p in extras if p]
+        lines.append(f"Händelse {tnr}" + (f" — {', '.join(parts)}" if parts else ""))
+    return lines
+
+
+def render_watchlist_markdown(entries: list[dict[str, Any]], site_name: str) -> str:
+    """A focused list of recurring and manually bevakade (watchlisted)
+    persons/vehicles/objects, straight from the entities database -- no
+    threat-level badge or score. For the "Skicka bevakningslista" button
+    on Personer, fordon och objekt (see db.list_watchlist_entities)."""
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    total_groups = len(summary.vehicle_groups) + len(summary.person_groups) + len(summary.other_groups)
     lines = [
-        f"# Återkommande fordon, personer och observationer — {site_name}",
+        f"# Bevakningslista — {site_name}",
         "",
         f"Skapad: {generated_at}",
-        f"Period: {_SINCE_LABELS.get(summary.period_label, summary.period_label)}",
-        f"Rapporter i underlaget: {summary.total_events} · Identifierade mönster: {total_groups}",
+        f"Poster på listan: {len(entries)}",
         "",
     ]
 
-    for title, groups in [
-        ("Återkommande fordon", summary.vehicle_groups),
-        ("Återkommande personer", summary.person_groups),
-        ("Övriga anmärkningsvärda observationer", summary.other_groups),
-    ]:
+    for entity_type, title in _WATCHLIST_TYPE_TITLES:
+        type_entries = [e for e in entries if e["entity"]["entity_type"] == entity_type]
         lines.append(f"## {title}")
-        if not groups:
+        if not type_entries:
             lines.append("Inga identifierade.")
             lines.append("")
             continue
-        for group in groups:
-            lines.append(f"### {_group_heading(group)}")
-            for reason in group.reasons:
-                lines.append(f"- {reason}")
-            for event_line in _format_group_events(group):
+        for entry in type_entries:
+            lines.append(f"### {_watchlist_entry_heading(entry)}")
+            details = _watchlist_entry_details(entry)
+            if details:
+                lines.append(f"- {details}")
+            for event_line in _format_entity_events(entry["events"]):
                 lines.append(f"  - {event_line}")
             lines.append("")
 
-    lines += [f"_{_RECURRING_DISCLAIMER}_", ""]
+    lines += [f"_{_WATCHLIST_DISCLAIMER}_", ""]
     return "\n".join(lines)
 
 
-def render_recurring_pdf(summary: "analysis.Summary", site_name: str) -> io.BytesIO:
+def render_watchlist_pdf(entries: list[dict[str, Any]], site_name: str) -> io.BytesIO:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import cm
@@ -355,52 +398,34 @@ def render_recurring_pdf(summary: "analysis.Summary", site_name: str) -> io.Byte
 
     styles = getSampleStyleSheet()
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, title="Återkommande observationer")
+    doc = SimpleDocTemplate(buf, pagesize=A4, title="Bevakningslista")
     story: list[Any] = []
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    total_groups = len(summary.vehicle_groups) + len(summary.person_groups) + len(summary.other_groups)
-    story.append(
-        Paragraph(f"Återkommande fordon, personer och observationer — {site_name}", styles["Title"])
-    )
+    story.append(Paragraph(f"Bevakningslista — {site_name}", styles["Title"]))
     story.append(Paragraph(f"Skapad: {generated_at}", styles["Normal"]))
-    story.append(
-        Paragraph(
-            f"Period: {_SINCE_LABELS.get(summary.period_label, summary.period_label)}",
-            styles["Normal"],
-        )
-    )
-    story.append(
-        Paragraph(
-            f"Rapporter i underlaget: {summary.total_events} · Identifierade mönster: {total_groups}",
-            styles["Normal"],
-        )
-    )
+    story.append(Paragraph(f"Poster på listan: {len(entries)}", styles["Normal"]))
     story.append(Spacer(1, 0.5 * cm))
 
-    for title, groups in [
-        ("Återkommande fordon", summary.vehicle_groups),
-        ("Återkommande personer", summary.person_groups),
-        ("Övriga anmärkningsvärda observationer", summary.other_groups),
-    ]:
+    for entity_type, title in _WATCHLIST_TYPE_TITLES:
+        type_entries = [e for e in entries if e["entity"]["entity_type"] == entity_type]
         story.append(Paragraph(title, styles["Heading2"]))
-        if not groups:
+        if not type_entries:
             story.append(Paragraph("Inga identifierade.", styles["Normal"]))
             story.append(Spacer(1, 0.3 * cm))
             continue
-        for group in groups:
-            story.append(
-                Paragraph(_group_heading(group), styles["Heading3"])
-            )
-            for reason in group.reasons:
-                story.append(Paragraph(f"• {reason}", styles["Normal"]))
-            event_lines = _format_group_events(group)
+        for entry in type_entries:
+            story.append(Paragraph(_watchlist_entry_heading(entry), styles["Heading3"]))
+            details = _watchlist_entry_details(entry)
+            if details:
+                story.append(Paragraph(details, styles["Normal"]))
+            event_lines = _format_entity_events(entry["events"])
             if event_lines:
                 story.append(Paragraph(", ".join(event_lines), styles["Normal"]))
             story.append(Spacer(1, 0.3 * cm))
 
     story.append(Spacer(1, 0.3 * cm))
-    story.append(Paragraph(f"<i>{_RECURRING_DISCLAIMER}</i>", styles["Normal"]))
+    story.append(Paragraph(f"<i>{_WATCHLIST_DISCLAIMER}</i>", styles["Normal"]))
 
     doc.build(story)
     buf.seek(0)
