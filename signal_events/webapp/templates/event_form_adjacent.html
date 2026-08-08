@@ -102,10 +102,10 @@
       <input type="text" id="reported_by" name="reported_by">
 
       <label for="next_steps">Vad händer härnäst</label>
-      <textarea id="next_steps" name="next_steps"></textarea>
+      <textarea id="next_steps" name="next_steps" class="auto-grow"></textarea>
 
       <label for="notes">Anteckningar (fritext, valfritt)</label>
-      <textarea id="notes" name="notes" placeholder="Eventuella ytterligare detaljer värda att spara ordagrant"></textarea>
+      <textarea id="notes" name="notes" class="auto-grow" placeholder="Eventuella ytterligare detaljer värda att spara ordagrant"></textarea>
 
       <label for="photos">Foton</label>
       <input type="file" id="photos" name="photos" accept="image/*" multiple>
@@ -219,6 +219,23 @@
         } else {
           marker = L.marker(e.latlng).addTo(map);
         }
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      // Grows each .auto-grow textarea to fit its own content instead of
+      // scrolling internally, so a longer "Vad händer härnäst" or
+      // "Anteckningar" is fully visible without extra clicking/scrolling
+      // -- reset to "auto" first so shrinking (e.g. after deleting text)
+      // is picked up too, not just growth.
+      function autoGrow(el) {
+        el.style.height = "auto";
+        el.style.height = el.scrollHeight + "px";
+      }
+      document.querySelectorAll("textarea.auto-grow").forEach(function (el) {
+        autoGrow(el);
+        el.addEventListener("input", function () { autoGrow(el); });
       });
     })();
   </script>

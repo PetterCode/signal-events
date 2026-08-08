@@ -41,6 +41,11 @@
     label { display: block; margin-top: 0.75rem; font-size: 0.85rem; font-weight: 600; color: #333; }
     input[type=text], input[type=password], select, textarea { width: 100%; padding: 0.4rem; margin-top: 0.2rem; box-sizing: border-box; font-size: 0.9rem; }
     textarea { min-height: 4rem; }
+    /* Grown to fit its own content by JS (see each page's auto-grow
+       script) rather than scrolling internally -- resize/overflow here
+       just keep the manual drag-handle and a stray scrollbar from
+       fighting that while it's happening. */
+    textarea.auto-grow { resize: none; overflow: hidden; }
     .attachments img { max-width: 220px; margin: 0.5rem 0.5rem 0 0; border-radius: 4px; border: 1px solid #ddd; }
     .map-container { height: 320px; border-radius: 4px; margin-top: 0.5rem; }
     .map-container-large { height: 560px; }

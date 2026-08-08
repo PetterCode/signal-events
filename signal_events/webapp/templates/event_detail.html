@@ -131,7 +131,7 @@
       <input type="text" id="reported_by" name="reported_by" value="{{ event.reported_by or '' }}">
 
       <label for="next_steps">Vad händer härnäst</label>
-      <textarea id="next_steps" name="next_steps">{{ event.next_steps or '' }}</textarea>
+      <textarea id="next_steps" name="next_steps" class="auto-grow">{{ event.next_steps or '' }}</textarea>
 
       <label for="photos">Lägg till foton</label>
       <input type="file" id="photos" name="photos" accept="image/*" multiple>
@@ -313,6 +313,23 @@
       document.addEventListener("fullscreenchange", function () {
         fullscreenBtn.textContent = document.fullscreenElement ? "Avsluta helskärm" : "Helskärm";
         setTimeout(function () { map.invalidateSize(); }, 100);
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      // Grows each .auto-grow textarea to fit its own content instead of
+      // scrolling internally, so a longer "Vad händer härnäst" is fully
+      // visible without extra clicking/scrolling -- reset to "auto"
+      // first so shrinking (e.g. after deleting text) is picked up too,
+      // not just growth.
+      function autoGrow(el) {
+        el.style.height = "auto";
+        el.style.height = el.scrollHeight + "px";
+      }
+      document.querySelectorAll("textarea.auto-grow").forEach(function (el) {
+        autoGrow(el);
+        el.addEventListener("input", function () { autoGrow(el); });
       });
     })();
   </script>
