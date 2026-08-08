@@ -34,6 +34,22 @@
     </form>
   </div>
 
+  <div class="card">
+    <h3>Stoppa servern</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Stänger ner signal-events, samma effekt som att stänga terminalen
+      det startades ifrån. Använd &rdquo;Starta server.command&rdquo;
+      (eller <code>signal-events serve</code>) för att starta igen.
+      Ingen data påverkas.
+    </p>
+    <form method="post" action="{{ url_for('events.stop_server') }}"
+          onsubmit="return confirm('Stoppa servern? Appen slutar svara tills den startas igen.');">
+      <div class="actions">
+        <button type="submit" class="btn-danger">Stoppa servern</button>
+      </div>
+    </form>
+  </div>
+
   <div class="settings-nav">
     Hoppa till:
     <a href="#settings-enhet">Enhet</a>

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Servern stoppas{% endblock %}
+{% block content %}
+  <h1>Servern stoppas</h1>
+  <div class="card">
+    <p>
+      signal-events stängs ner just nu. Den här fliken slutar svara om en
+      liten stund &mdash; det är förväntat, inte ett fel.
+    </p>
+    <p style="font-size:0.85rem;color:#666">
+      Starta servern igen genom att dubbelklicka på
+      &rdquo;Starta server.command&rdquo; (samma sätt som första gången),
+      eller kör <code>signal-events serve</code> från terminalen.
+    </p>
+  </div>
+{% endblock %}

@@ -8,6 +8,7 @@ that can't be verified any other way."""
 import hashlib
 import io
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -1644,6 +1645,33 @@ def test_reset_database_route_restores_map_settings_to_their_defaults():
     assert b'value="lantmateriet_ftp" checked' in settings_resp.data
     assert b'value="small" checked' in settings_resp.data
     assert "Inget kartcentrum sparat än".encode() in settings_resp.data
+
+
+def test_stop_server_route_logs_and_schedules_a_process_exit(monkeypatch):
+    """The route must respond with the confirmation page (and log the
+    action) before the process actually exits -- the exit itself happens
+    from a background thread a moment later, not inline in the handler,
+    so the response has time to reach the browser. os._exit() is swapped
+    for a fake here since actually calling it would kill the test run."""
+    exit_calls = []
+    monkeypatch.setattr(routes_module, "_exit_process", lambda: exit_calls.append(True))
+    monkeypatch.setattr(routes_module.time, "sleep", lambda seconds: None)
+
+    threads_before = set(threading.enumerate())
+    client = create_app().test_client()
+    resp = client.post("/settings/stop-server")
+
+    assert resp.status_code == 200
+    assert "Servern stoppas".encode() in resp.data
+
+    with db_module.get_connection() as conn:
+        log = db_module.list_system_log(conn, limit=5)
+    assert any(entry["event_type"] == "server_stop" for entry in log)
+
+    new_threads = set(threading.enumerate()) - threads_before
+    for thread in new_threads:
+        thread.join(timeout=2)
+    assert exit_calls == [True]
 
 
 def test_save_map_center_route_persists_a_valid_center():

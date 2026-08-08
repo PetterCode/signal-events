@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import ipaddress
 import json
+import os
 import shutil
 import socket
 import sqlite3
@@ -69,6 +70,7 @@ _ADMIN_ONLY_ENDPOINTS = {
     "events.save_map_cache_area_size",
     "events.download_map_tiles",
     "events.purge_blocked_map_tiles",
+    "events.stop_server",
 }
 
 
@@ -1157,6 +1159,30 @@ def reset_database():
         "mottagna statusrapporter och inställningar är borttagna."
     )
     return redirect(url_for("events.settings"))
+
+
+def _exit_process() -> None:
+    os._exit(0)
+
+
+@bp.route("/settings/stop-server", methods=["POST"])
+def stop_server():
+    """Shuts the running signal-events process down -- the counterpart to
+    "Starta server.command" (see README) for someone who started it that
+    way and has no terminal open to Ctrl-C it again. The actual exit
+    happens a moment later from a background thread, after this request's
+    own response has already been handed to Werkzeug to send -- calling
+    os._exit() directly in the handler risks the connection closing before
+    the confirmation page reaches the browser."""
+    with db.get_connection() as conn:
+        db.log_system_event(conn, "server_stop", "Stoppad via Inställningar")
+
+    def _stop_soon():
+        time.sleep(0.5)
+        _exit_process()
+
+    threading.Thread(target=_stop_soon, daemon=True).start()
+    return render_template("server_stopped.html")
 
 
 def _attach_training_images(conn: sqlite3.Connection, event_ids: list[int], day: int) -> int:
