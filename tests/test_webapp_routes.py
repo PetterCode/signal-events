@@ -2522,3 +2522,395 @@ def test_events_list_orders_by_created_at_not_by_event_time():
     # A's created_at is newer, so it must appear first even though its
     # event_time ("270600") is earlier than B's ("270900").
     assert text.index("Norra grinden") < text.index("Södra vägen")
+
+
+# --- Entities (persons, vehicles, other objects) ----------------------------
+
+def test_new_event_post_with_a_person_and_vehicle_composer_block_auto_links_entities():
+    client = create_app().test_client()
+    marks = (
+        "Person 1 (A – Age: 30-40, B – Build: Muskulös); "
+        "Fordon 1 (R – Registration: ABC123)"
+    )
+    resp = client.post(
+        "/events/new", data={"place": "Norra grinden", "marks": marks},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+        assert len(events) == 1
+        linked = db_module.list_entities_for_event(conn, events[0]["id"])
+    types = sorted(row["entity_type"] for row in linked)
+    assert types == ["person", "vehicle"]
+
+
+def test_event_detail_page_shows_linked_entities():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X", "marks": "Person 1 (A – Age: 20)"})
+
+    with db_module.get_connection() as conn:
+        event_id = db_module.list_events(conn)[0]["id"]
+
+    resp = client.get(f"/events/{event_id}")
+    assert resp.status_code == 200
+    assert "Person 1".encode() in resp.data
+
+
+def test_list_entities_route_shows_created_entities_and_supports_type_filter():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X", "marks": "Fordon 1 (R – Registration: ABC123)"})
+
+    resp = client.get("/entities")
+    assert resp.status_code == 200
+    assert "ABC123".encode() in resp.data
+
+    resp_person_only = client.get("/entities?type=person")
+    assert "ABC123".encode() not in resp_person_only.data
+
+
+def test_new_entity_route_creates_a_manual_entity_and_can_link_it_to_an_event():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X"})
+    with db_module.get_connection() as conn:
+        event_id = db_module.list_events(conn)[0]["id"]
+
+    resp = client.post(
+        "/entities/new",
+        data={
+            "entity_type": "object", "label": "Kikare funnen vid stängslet",
+            "link_event_id": str(event_id),
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    with db_module.get_connection() as conn:
+        entities_list = db_module.list_entities(conn, entity_type="object")
+        assert len(entities_list) == 1
+        entity_id = entities_list[0]["id"]
+        linked_events = db_module.list_events_for_entity(conn, entity_id)
+    assert len(linked_events) == 1
+    assert linked_events[0]["id"] == event_id
+
+
+def test_new_entity_route_requires_a_label():
+    client = create_app().test_client()
+    resp = client.post("/entities/new", data={"entity_type": "person", "label": ""})
+    assert resp.status_code == 302
+    with db_module.get_connection() as conn:
+        assert db_module.list_entities(conn) == []
+
+
+def test_new_entity_route_stores_person_identity_fields_not_registration():
+    client = create_app().test_client()
+    client.post(
+        "/entities/new",
+        data={
+            "entity_type": "person", "label": "Okänd man",
+            "name": "Kalle Karlsson", "alias": "Kalles", "nationality": "Svensk",
+            "date_of_birth": "1990-01-01",
+            "registration": "ABC123",  # must be ignored for a person
+        },
+    )
+    with db_module.get_connection() as conn:
+        entity = db_module.list_entities(conn, entity_type="person")[0]
+    assert entity["registration"] is None
+    attrs = json.loads(entity["attributes"])
+    assert attrs == {
+        "Namn": "Kalle Karlsson", "Alias": "Kalles", "Nationalitet": "Svensk",
+        "Födelsedatum": "1990-01-01",
+    }
+
+
+def test_new_entity_route_stores_vehicle_registration_not_identity_fields():
+    client = create_app().test_client()
+    client.post(
+        "/entities/new",
+        data={
+            "entity_type": "vehicle", "label": "Vit skåpbil", "registration": "ABC 123",
+            "name": "Kalle Karlsson",  # must be ignored for a vehicle
+        },
+    )
+    with db_module.get_connection() as conn:
+        entity = db_module.list_entities(conn, entity_type="vehicle")[0]
+    assert entity["registration"] == "ABC123"
+    assert entity["attributes"] is None
+
+
+def test_entity_detail_post_updates_person_identity_fields_and_preserves_other_attributes():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X", "marks": "Person 1 (A – Age: 30-40)"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn, entity_type="person")[0]["id"]
+
+    client.post(f"/entities/{entity_id}", data={
+        "label": "Person 1", "name": "Kalle Karlsson", "alias": "Kalles",
+    })
+
+    with db_module.get_connection() as conn:
+        entity = db_module.get_entity(conn, entity_id)
+    attrs = json.loads(entity["attributes"])
+    assert attrs["Namn"] == "Kalle Karlsson"
+    assert attrs["Alias"] == "Kalles"
+    assert attrs["Age"] == "30-40"  # untouched by the identity-field edit
+    assert entity["registration"] is None
+
+
+def test_entity_detail_post_clears_a_person_identity_field_left_blank():
+    client = create_app().test_client()
+    client.post("/entities/new", data={
+        "entity_type": "person", "label": "Okänd", "alias": "Räven",
+    })
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    client.post(f"/entities/{entity_id}", data={"label": "Okänd", "alias": ""})
+
+    with db_module.get_connection() as conn:
+        entity = db_module.get_entity(conn, entity_id)
+    attrs = json.loads(entity["attributes"]) if entity["attributes"] else {}
+    assert "Alias" not in attrs
+
+
+def test_entity_detail_post_does_not_touch_registration_for_a_person():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Okänd"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    client.post(f"/entities/{entity_id}", data={
+        "label": "Okänd", "registration": "ABC123",  # no registration field shown/sent for a person
+    })
+
+    with db_module.get_connection() as conn:
+        assert db_module.get_entity(conn, entity_id)["registration"] is None
+
+
+def test_entity_detail_post_still_updates_vehicle_registration():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "vehicle", "label": "Bil"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    client.post(f"/entities/{entity_id}", data={"label": "Bil", "registration": "XYZ 789"})
+
+    with db_module.get_connection() as conn:
+        assert db_module.get_entity(conn, entity_id)["registration"] == "XYZ789"
+
+
+def test_entity_detail_route_shows_attributes_and_linked_events():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X", "marks": "Person 1 (A – Age: 30-40)"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    resp = client.get(f"/entities/{entity_id}")
+    assert resp.status_code == 200
+    assert "30-40".encode() in resp.data
+
+
+def test_entity_detail_post_edits_label_and_notes():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "object", "label": "Först"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    client.post(f"/entities/{entity_id}", data={"label": "Sedan", "notes": "Ny anteckning"})
+
+    with db_module.get_connection() as conn:
+        entity = db_module.get_entity(conn, entity_id)
+    assert entity["label"] == "Sedan"
+    assert entity["notes"] == "Ny anteckning"
+
+
+def test_link_entity_to_event_route_links_from_the_event_side():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X"})
+    client.post("/entities/new", data={"entity_type": "object", "label": "Kikare"})
+    with db_module.get_connection() as conn:
+        event_id = db_module.list_events(conn)[0]["id"]
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    resp = client.post(
+        f"/events/{event_id}/link-entity", data={"entity_id": str(entity_id)},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        linked = db_module.list_entities_for_event(conn, event_id)
+    assert len(linked) == 1
+    assert linked[0]["link_source"] == "manual"
+
+
+def test_unlink_entity_route_removes_the_link_without_deleting_the_entity():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X"})
+    client.post("/entities/new", data={"entity_type": "object", "label": "Kikare"})
+    with db_module.get_connection() as conn:
+        event_id = db_module.list_events(conn)[0]["id"]
+        entity_id = db_module.list_entities(conn)[0]["id"]
+    client.post(f"/events/{event_id}/link-entity", data={"entity_id": str(entity_id)})
+
+    resp = client.post(f"/entities/{entity_id}/unlink/{event_id}", follow_redirects=True)
+    assert resp.status_code == 200
+
+    with db_module.get_connection() as conn:
+        assert db_module.list_entities_for_event(conn, event_id) == []
+        assert db_module.get_entity(conn, entity_id) is not None
+
+
+def test_delete_entity_route_removes_the_entity():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "object", "label": "Kikare"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    resp = client.post(f"/entities/{entity_id}/delete", follow_redirects=True)
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_entity(conn, entity_id) is None
+
+
+def test_entity_detail_shows_entities_seen_together_via_a_shared_event():
+    client = create_app().test_client()
+    marks = "Person 1 (A – Age: 30-40); Fordon 1 (R – Registration: ABC123)"
+    client.post("/events/new", data={"place": "X", "marks": marks})
+
+    with db_module.get_connection() as conn:
+        person = next(e for e in db_module.list_entities(conn) if e["entity_type"] == "person")
+
+    resp = client.get(f"/entities/{person['id']}")
+    assert resp.status_code == 200
+    assert "ABC123".encode() in resp.data
+
+
+def test_new_entity_route_accepts_a_photo_upload():
+    client = create_app().test_client()
+    photo = (io.BytesIO(b"fake-image-bytes"), "person.jpg")
+
+    resp = client.post(
+        "/entities/new",
+        data={"entity_type": "person", "label": "Okänd man", "photo": photo},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    with db_module.get_connection() as conn:
+        entity = db_module.list_entities(conn)[0]
+    assert entity["photo_path"] is not None
+    assert Path(entity["photo_path"]).exists()
+
+
+def test_entity_photo_route_uploads_and_serves_a_photo():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Okänd man"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    photo = (io.BytesIO(b"fake-image-bytes"), "person.jpg")
+    resp = client.post(
+        f"/entities/{entity_id}/photo", data={"photo": photo},
+        content_type="multipart/form-data", follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    file_resp = client.get(f"/entities/{entity_id}/photo/file")
+    assert file_resp.status_code == 200
+    assert file_resp.data == b"fake-image-bytes"
+
+
+def test_entity_photo_route_replaces_the_previous_photo_file():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Okänd man"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    first_photo = (io.BytesIO(b"first-bytes"), "first.jpg")
+    client.post(
+        f"/entities/{entity_id}/photo", data={"photo": first_photo},
+        content_type="multipart/form-data",
+    )
+    with db_module.get_connection() as conn:
+        first_path = Path(db_module.get_entity(conn, entity_id)["photo_path"])
+    assert first_path.exists()
+
+    second_photo = (io.BytesIO(b"second-bytes"), "second.jpg")
+    client.post(
+        f"/entities/{entity_id}/photo", data={"photo": second_photo},
+        content_type="multipart/form-data",
+    )
+
+    assert not first_path.exists()
+    file_resp = client.get(f"/entities/{entity_id}/photo/file")
+    assert file_resp.data == b"second-bytes"
+
+
+def test_delete_entity_photo_route_removes_the_file_and_clears_the_path():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Okänd man"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    photo = (io.BytesIO(b"fake-image-bytes"), "person.jpg")
+    client.post(
+        f"/entities/{entity_id}/photo", data={"photo": photo},
+        content_type="multipart/form-data",
+    )
+    with db_module.get_connection() as conn:
+        photo_path = Path(db_module.get_entity(conn, entity_id)["photo_path"])
+    assert photo_path.exists()
+
+    resp = client.post(f"/entities/{entity_id}/photo/delete", follow_redirects=True)
+    assert resp.status_code == 200
+    assert not photo_path.exists()
+    with db_module.get_connection() as conn:
+        assert db_module.get_entity(conn, entity_id)["photo_path"] is None
+
+
+def test_delete_entity_route_also_removes_the_photo_file_from_disk():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Okänd man"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    photo = (io.BytesIO(b"fake-image-bytes"), "person.jpg")
+    client.post(
+        f"/entities/{entity_id}/photo", data={"photo": photo},
+        content_type="multipart/form-data",
+    )
+    with db_module.get_connection() as conn:
+        photo_path = Path(db_module.get_entity(conn, entity_id)["photo_path"])
+
+    client.post(f"/entities/{entity_id}/delete", follow_redirects=True)
+
+    assert not photo_path.exists()
+
+
+def test_entity_photo_file_route_404s_when_there_is_no_photo():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Okänd man"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+
+    resp = client.get(f"/entities/{entity_id}/photo/file")
+    assert resp.status_code == 404
+
+
+def test_new_event_post_person_panel_identity_fields_are_stored_as_attributes():
+    client = create_app().test_client()
+    marks = (
+        "Person 1 (Namn: Kalle Karlsson, Alias: Kalles, Nationalitet: Svensk, "
+        "Födelsedatum: 1990-01-01)"
+    )
+    client.post("/events/new", data={"place": "X", "marks": marks})
+
+    with db_module.get_connection() as conn:
+        entity = db_module.list_entities(conn, entity_type="person")[0]
+    attrs = json.loads(entity["attributes"])
+    assert attrs["Namn"] == "Kalle Karlsson"
+    assert attrs["Alias"] == "Kalles"
+    assert attrs["Nationalitet"] == "Svensk"
+    assert attrs["Födelsedatum"] == "1990-01-01"

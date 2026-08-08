@@ -19,7 +19,7 @@ import sqlite3
 import time
 from typing import Optional
 
-from . import db, parser
+from . import db, entities, parser
 
 _DASH_SEPARATOR_RE = re.compile(r"^\s*-{3,}\s*$", re.MULTILINE)
 _BLANK_LINE_SPLIT_RE = re.compile(r"\n\s*\n+")
@@ -74,5 +74,7 @@ def import_text(
         )
         fields = parser.parse_event_fields(body, reported_by=reported_by)
         fields["is_sensor"] = is_sensor
-        event_ids.append(db.insert_event(conn, message_id=message_id, fields=fields))
+        event_id = db.insert_event(conn, message_id=message_id, fields=fields)
+        entities.sync_event_entities(conn, event_id)
+        event_ids.append(event_id)
     return event_ids

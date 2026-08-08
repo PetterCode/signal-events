@@ -3,6 +3,7 @@ works with no network connection once messages have been synced."""
 
 from __future__ import annotations
 
+import json
 import secrets
 import sqlite3
 import urllib.parse
@@ -117,10 +118,44 @@ CREATE TABLE IF NOT EXISTS summary_log (
     format TEXT
 );
 
+CREATE TABLE IF NOT EXISTS entities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL, -- 'person' | 'vehicle' | 'object'
+    label TEXT NOT NULL,
+    registration TEXT, -- normalized vehicle plate (see entities.py
+                        -- _normalize_plate) used to recognise the same
+                        -- vehicle recurring across separate reports;
+                        -- NULL for person/object entities and vehicles
+                        -- with no readable plate
+    attributes TEXT, -- JSON object of free-form key/value details, e.g.
+                      -- {"Age": "30-40", "Registration": "ABC 123"}
+    notes TEXT,
+    photo_path TEXT, -- absolute path to one uploaded reference photo, see
+                      -- webapp/routes.py's entity_photo/entity_photo_file;
+                      -- manual only, never set by entities.py's parser
+    source TEXT NOT NULL DEFAULT 'manual', -- 'auto' | 'manual' -- see
+                                            -- entities.sync_event_entities
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS entity_event_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_id INTEGER NOT NULL REFERENCES entities(id),
+    event_id INTEGER NOT NULL REFERENCES events(id),
+    source TEXT NOT NULL DEFAULT 'manual', -- 'auto' | 'manual'
+    created_at TEXT NOT NULL,
+    UNIQUE(entity_id, event_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
 CREATE INDEX IF NOT EXISTS idx_adjacent_reports_received_at ON adjacent_reports(received_at);
 CREATE INDEX IF NOT EXISTS idx_summary_log_created_at ON summary_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_entities_registration ON entities(registration);
+CREATE INDEX IF NOT EXISTS idx_entities_entity_type ON entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entity_event_links_entity_id ON entity_event_links(entity_id);
+CREATE INDEX IF NOT EXISTS idx_entity_event_links_event_id ON entity_event_links(event_id);
 """
 
 # Key used in the `settings` table for the reporting unit's name -- edited
@@ -249,6 +284,7 @@ def init_db() -> None:
         _migrate_add_column(conn, "events", "lon", "REAL")
         _migrate_add_column(conn, "events", "source_unit", "TEXT")
         _migrate_add_column(conn, "users", "last_seen", "TEXT")
+        _migrate_add_column(conn, "entities", "photo_path", "TEXT")
         _migrate_summary_log_identity_columns(conn)
 
 
@@ -502,12 +538,24 @@ def delete_event(conn: sqlite3.Connection, event_id: int) -> bool:
     another event's message if that ever changes. Returns True if the
     message/attachments were also deleted, so the caller (which fetches
     the attachment file paths beforehand) knows whether it should also
-    remove the attachment files from disk."""
+    remove the attachment files from disk.
+
+    Also drops this event's entity_event_links rows first (FK constraint,
+    PRAGMA foreign_keys = ON) and prunes any auto-extracted entity that
+    links leaves with no remaining link anywhere -- a manually-added
+    entity, or one still linked to another event, survives regardless."""
     event = get_event(conn, event_id)
     if event is None:
         return False
     message_id = event["message_id"]
+    linked_entity_ids = [
+        row["entity_id"] for row in conn.execute(
+            "SELECT entity_id FROM entity_event_links WHERE event_id = ?", (event_id,)
+        )
+    ]
+    conn.execute("DELETE FROM entity_event_links WHERE event_id = ?", (event_id,))
     conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    prune_orphaned_auto_entities(conn, linked_entity_ids)
     remaining = conn.execute(
         "SELECT 1 FROM events WHERE message_id = ?", (message_id,)
     ).fetchone()
@@ -521,15 +569,21 @@ def delete_event(conn: sqlite3.Connection, event_id: int) -> bool:
 # Every table, children before parents so the FK constraints (PRAGMA
 # foreign_keys = ON in get_connection) don't reject the deletes.
 _ALL_TABLES = [
-    "attachments", "events", "messages",
+    "entity_event_links", "attachments", "events", "entities", "messages",
     "adjacent_report_attachments", "adjacent_reports", "adjacent_units",
     "settings", "users", "system_log",
 ]
 
 # Just the event log -- events, their source messages, and attachments.
 # Leaves settings (unit name), the adjacent-unit roster, and received
-# adjacent-unit status reports untouched.
-_EVENT_LOG_TABLES = ["attachments", "events", "messages"]
+# adjacent-unit status reports untouched. entity_event_links is cleared
+# alongside it (a link to a deleted event is meaningless either way), and
+# entities.py-extracted ("auto") entities go with it since they only
+# existed to represent something in the now-gone event log; manually
+# catalogued entities (source='manual') are reference data like the
+# adjacent-unit roster and survive, same as everything else this leaves
+# untouched.
+_EVENT_LOG_TABLES = ["entity_event_links", "attachments", "events", "messages"]
 
 
 def _reset_tables(conn: sqlite3.Connection, tables: list[str]) -> None:
@@ -549,11 +603,16 @@ def _reset_tables(conn: sqlite3.Connection, tables: list[str]) -> None:
 
 def reset_events(conn: sqlite3.Connection) -> None:
     """Partial reset: wipes only the event log (events, their source
-    messages, and attachments). Used by the "Rensa händelselogg" button
-    on Inställningar. The caller is also responsible for clearing the
-    non-adjacent parts of config.ATTACHMENTS_DIR on disk, since files
-    there aren't tracked by SQLite itself."""
+    messages, and attachments), plus every entity_event_links row and
+    auto-extracted entity -- both are meaningless once the events they
+    came from are gone. Manually catalogued entities (source='manual')
+    are reference data, like the adjacent-unit roster, and survive this,
+    same as everything else it leaves untouched. Used by the "Rensa
+    händelselogg" button on Inställningar. The caller is also responsible
+    for clearing the non-adjacent parts of config.ATTACHMENTS_DIR on
+    disk, since files there aren't tracked by SQLite itself."""
     _reset_tables(conn, _EVENT_LOG_TABLES)
+    conn.execute("DELETE FROM entities WHERE source = 'auto'")
 
 
 def reset_all(conn: sqlite3.Connection) -> None:
@@ -618,6 +677,21 @@ def clear_demo_events(conn: sqlite3.Connection) -> tuple[list[int], list[str]]:
     message_ids = [row["id"] for row in rows]
     if message_ids:
         placeholders = ",".join("?" for _ in message_ids)
+        event_rows = conn.execute(
+            f"SELECT id FROM events WHERE message_id IN ({placeholders})", message_ids
+        ).fetchall()
+        event_ids = [row["id"] for row in event_rows]
+        if event_ids:
+            event_placeholders = ",".join("?" for _ in event_ids)
+            linked_entity_rows = conn.execute(
+                f"SELECT entity_id FROM entity_event_links WHERE event_id IN ({event_placeholders})",
+                event_ids,
+            ).fetchall()
+            linked_entity_ids = [row["entity_id"] for row in linked_entity_rows]
+            conn.execute(
+                f"DELETE FROM entity_event_links WHERE event_id IN ({event_placeholders})", event_ids
+            )
+            prune_orphaned_auto_entities(conn, linked_entity_ids)
         conn.execute(f"DELETE FROM attachments WHERE message_id IN ({placeholders})", message_ids)
         conn.execute(f"DELETE FROM events WHERE message_id IN ({placeholders})", message_ids)
         conn.execute(f"DELETE FROM messages WHERE id IN ({placeholders})", message_ids)
@@ -1107,4 +1181,203 @@ def list_system_log(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.
     display is capped)."""
     return conn.execute(
         "SELECT * FROM system_log ORDER BY created_at DESC, id DESC LIMIT ?", (limit,)
+    ).fetchall()
+
+
+# --- Entities (persons, vehicles, other objects) --------------------------
+#
+# See entities.py for the rule-based extraction that populates these
+# ('auto'-sourced rows) and signal_events/webapp/routes.py's /entities
+# routes for manual catalogue entries ('manual'-sourced). "Seen together"
+# is deliberately not its own table -- it's fully determined by which
+# entities link to the same event, so list_entities_seen_with derives it
+# on the fly instead of keeping a second, driftable copy of that fact.
+
+
+def insert_entity(
+    conn: sqlite3.Connection,
+    entity_type: str,
+    label: str,
+    registration: Optional[str] = None,
+    attributes: Optional[dict] = None,
+    notes: Optional[str] = None,
+    source: str = "manual",
+) -> int:
+    ts = now_iso()
+    cur = conn.execute(
+        """INSERT INTO entities
+           (entity_type, label, registration, attributes, notes, source, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            entity_type, label, registration,
+            json.dumps(attributes) if attributes else None,
+            notes, source, ts, ts,
+        ),
+    )
+    return cur.lastrowid
+
+
+def update_entity(conn: sqlite3.Connection, entity_id: int, fields: dict[str, Any]) -> None:
+    columns = ["entity_type", "label", "registration", "attributes", "notes", "photo_path"]
+    updates = {k: v for k, v in fields.items() if k in columns}
+    if not updates:
+        return
+    if "attributes" in updates and isinstance(updates["attributes"], dict):
+        updates["attributes"] = json.dumps(updates["attributes"]) if updates["attributes"] else None
+    updates["updated_at"] = now_iso()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    conn.execute(
+        f"UPDATE entities SET {set_clause} WHERE id = ?",
+        (*updates.values(), entity_id),
+    )
+
+
+def get_entity(conn: sqlite3.Connection, entity_id: int) -> Optional[sqlite3.Row]:
+    return conn.execute("SELECT * FROM entities WHERE id = ?", (entity_id,)).fetchone()
+
+
+def find_entity_by_registration(
+    conn: sqlite3.Connection, entity_type: str, registration: str
+) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM entities WHERE entity_type = ? AND registration = ?",
+        (entity_type, registration),
+    ).fetchone()
+
+
+def list_entities(
+    conn: sqlite3.Connection,
+    entity_type: Optional[str] = None,
+    query: Optional[str] = None,
+) -> list[sqlite3.Row]:
+    sql = "SELECT * FROM entities WHERE 1=1"
+    params: list[Any] = []
+    if entity_type is not None:
+        sql += " AND entity_type = ?"
+        params.append(entity_type)
+    if query:
+        sql += " AND (label LIKE ? OR registration LIKE ? OR notes LIKE ? OR attributes LIKE ?)"
+        like = f"%{query}%"
+        params.extend([like, like, like, like])
+    sql += " ORDER BY updated_at DESC"
+    return conn.execute(sql, params).fetchall()
+
+
+def delete_entity(conn: sqlite3.Connection, entity_id: int) -> None:
+    conn.execute("DELETE FROM entity_event_links WHERE entity_id = ?", (entity_id,))
+    conn.execute("DELETE FROM entities WHERE id = ?", (entity_id,))
+
+
+def link_entity_to_event(
+    conn: sqlite3.Connection, entity_id: int, event_id: int, source: str = "manual"
+) -> None:
+    """A human manually linking an entity (source='manual') always wins
+    over -- and upgrades -- a pre-existing 'auto' link for the same pair,
+    since a deliberate confirmation should never be silently reverted to
+    'auto' (and therefore be eligible for auto-resync's cleanup) later.
+    The reverse never happens: an 'auto' insert leaves an existing row
+    (of either source) alone rather than downgrading it."""
+    if source == "manual":
+        conn.execute(
+            """INSERT INTO entity_event_links (entity_id, event_id, source, created_at)
+               VALUES (?, ?, 'manual', ?)
+               ON CONFLICT(entity_id, event_id) DO UPDATE SET source = 'manual'""",
+            (entity_id, event_id, now_iso()),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO entity_event_links (entity_id, event_id, source, created_at)
+               VALUES (?, ?, 'auto', ?)
+               ON CONFLICT(entity_id, event_id) DO NOTHING""",
+            (entity_id, event_id, now_iso()),
+        )
+
+
+def unlink_entity_from_event(conn: sqlite3.Connection, entity_id: int, event_id: int) -> None:
+    conn.execute(
+        "DELETE FROM entity_event_links WHERE entity_id = ? AND event_id = ?",
+        (entity_id, event_id),
+    )
+
+
+def replace_auto_entity_links_for_event(
+    conn: sqlite3.Connection, event_id: int, entity_ids: list[int]
+) -> None:
+    """Used by entities.sync_event_entities to make this event's 'auto'
+    links match `entity_ids` exactly: drops any existing 'auto' link not
+    in that list, then links (or leaves alone, see link_entity_to_event)
+    every id in it. Manual links for this event are never touched, so a
+    human's deliberate link survives even if that entity later stops
+    being mentioned in the report text."""
+    keep = set(entity_ids)
+    existing_auto = {
+        row["entity_id"] for row in conn.execute(
+            "SELECT entity_id FROM entity_event_links WHERE event_id = ? AND source = 'auto'",
+            (event_id,),
+        )
+    }
+    for entity_id in existing_auto - keep:
+        conn.execute(
+            "DELETE FROM entity_event_links WHERE entity_id = ? AND event_id = ? AND source = 'auto'",
+            (entity_id, event_id),
+        )
+    for entity_id in entity_ids:
+        link_entity_to_event(conn, entity_id, event_id, source="auto")
+
+
+def prune_orphaned_auto_entities(conn: sqlite3.Connection, entity_ids: Iterable[int]) -> None:
+    """Deletes any of `entity_ids` that are source='auto' and no longer
+    linked to any event -- called after an event is deleted or resynced,
+    so an auto-extracted person/vehicle that only ever existed because of
+    that one mention doesn't linger as a dangling catalogue entry.
+    Manually added entities (and any auto entity still linked elsewhere,
+    e.g. a vehicle matched by plate to another report) are left alone."""
+    for entity_id in entity_ids:
+        row = conn.execute(
+            "SELECT source FROM entities WHERE id = ?", (entity_id,)
+        ).fetchone()
+        if row is None or row["source"] != "auto":
+            continue
+        remaining = conn.execute(
+            "SELECT 1 FROM entity_event_links WHERE entity_id = ?", (entity_id,)
+        ).fetchone()
+        if remaining is None:
+            conn.execute("DELETE FROM entities WHERE id = ?", (entity_id,))
+
+
+def list_events_for_entity(conn: sqlite3.Connection, entity_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        """SELECT events.*, entity_event_links.source AS link_source
+           FROM events
+           JOIN entity_event_links ON entity_event_links.event_id = events.id
+           WHERE entity_event_links.entity_id = ?
+           ORDER BY events.created_at DESC""",
+        (entity_id,),
+    ).fetchall()
+
+
+def list_entities_for_event(conn: sqlite3.Connection, event_id: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        """SELECT entities.*, entity_event_links.source AS link_source
+           FROM entities
+           JOIN entity_event_links ON entity_event_links.entity_id = entities.id
+           WHERE entity_event_links.event_id = ?
+           ORDER BY entities.label""",
+        (event_id,),
+    ).fetchall()
+
+
+def list_entities_seen_with(conn: sqlite3.Connection, entity_id: int) -> list[sqlite3.Row]:
+    """Other entities linked to at least one of the same events as
+    entity_id -- derived from entity_event_links rather than a persisted
+    "seen together" table (see module note above)."""
+    return conn.execute(
+        """SELECT DISTINCT other.*
+           FROM entity_event_links AS mine
+           JOIN entity_event_links AS others
+             ON others.event_id = mine.event_id AND others.entity_id != mine.entity_id
+           JOIN entities AS other ON other.id = others.entity_id
+           WHERE mine.entity_id = ?
+           ORDER BY other.label""",
+        (entity_id,),
     ).fetchall()

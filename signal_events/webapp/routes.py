@@ -20,8 +20,8 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 from .. import (
-    analysis, config, coordinates, db, demo_map, duplicates, importer, lantmateriet_ftp, llm,
-    naming, signal_client, tiles, triviality,
+    analysis, config, coordinates, db, demo_map, duplicates, entities, importer, lantmateriet_ftp,
+    llm, naming, signal_client, tiles, triviality,
 )
 from ..reports import generator
 
@@ -317,6 +317,28 @@ def _save_uploaded_photos(conn, message_id: int) -> None:
         db.insert_attachment(
             conn, message_id=message_id, file_path=str(dest), content_type=file.mimetype
         )
+
+
+def _save_entity_photo(conn, entity_id: int, file) -> None:
+    """Saves (or replaces) the one reference photo an entity can have --
+    a no-op if `file` is missing/empty, same as _save_uploaded_photos.
+    Unlike event attachments (one message can carry many, kept forever as
+    a list), an entity has at most one photo, so a new upload deletes the
+    previous file from disk rather than accumulating them."""
+    if not file or not file.filename:
+        return
+    if file.mimetype and not file.mimetype.startswith("image/"):
+        return
+    existing = db.get_entity(conn, entity_id)
+    if existing and existing["photo_path"]:
+        Path(existing["photo_path"]).unlink(missing_ok=True)
+    dest_dir = config.ATTACHMENTS_DIR / "entities" / str(entity_id)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = secure_filename(file.filename)
+    stem, suffix = Path(safe_name).stem, Path(safe_name).suffix
+    dest = dest_dir / (stem[:100] + suffix[:20])
+    file.save(dest)
+    db.update_entity(conn, entity_id, {"photo_path": str(dest)})
 
 
 @bp.route("/")
@@ -1035,6 +1057,7 @@ def _new_event_view(*, adjacent: bool):
         )
         _save_uploaded_photos(conn, message_id)
         event_id = db.insert_event(conn, message_id=message_id, fields=fields)
+        entities.sync_event_entities(conn, event_id)
 
     return redirect(url_for("events.event_detail", event_id=event_id))
 
@@ -1305,6 +1328,7 @@ def event_detail(event_id: int):
             # flag (or confirm one the heuristic missed) and have it stick.
             fields["is_duplicate_reviewed"] = 1
             db.update_event(conn, event_id, fields)
+            entities.sync_event_entities(conn, event_id)
             _save_uploaded_photos(conn, event["message_id"])
             return redirect(url_for("events.event_detail", event_id=event_id))
 
@@ -1312,6 +1336,7 @@ def event_detail(event_id: int):
         attachments = db.list_attachments_for_message(conn, event["message_id"])
         map_center = db.get_map_center(conn)
         map_cache_radius_km = db.get_map_cache_radius_km(conn)
+        linked_entities = db.list_entities_for_event(conn, event_id)
 
     source = json.loads(message["raw_json"]).get("source", "signal")
     map_position_outside_cache = (
@@ -1328,6 +1353,8 @@ def event_detail(event_id: int):
         map_min_zoom=config.MAP_CACHE_MIN_ZOOM,
         map_max_zoom=config.MAP_CACHE_MAX_ZOOM,
         map_position_outside_cache=map_position_outside_cache,
+        linked_entities=linked_entities,
+        entity_type_labels=_ENTITY_TYPE_LABELS,
     )
 
 
@@ -1346,6 +1373,215 @@ def delete_event(event_id: int):
 
     flash("Händelsen har tagits bort.")
     return redirect(url_for("events.list_events"))
+
+
+_ENTITY_TYPES = ["person", "vehicle", "object"]
+_ENTITY_TYPE_LABELS = {"person": "Person", "vehicle": "Fordon", "object": "Objekt"}
+
+# A person has no registration plate -- these are its structured identity
+# fields instead, stored as attributes JSON keys (same keys entities.py's
+# composer-block parser already produces for auto-extracted persons, see
+# event_form.html's person panel) rather than dedicated columns, since
+# unlike a vehicle's plate they need no cross-report dedup lookup.
+_PERSON_IDENTITY_FIELDS = [
+    ("name", "Namn"), ("alias", "Alias"), ("nationality", "Nationalitet"),
+    ("date_of_birth", "Födelsedatum"),
+]
+
+
+def _person_identity_attributes_from_form(existing: dict[str, str] | None = None) -> dict[str, str]:
+    attributes = dict(existing) if existing else {}
+    for field_name, attr_key in _PERSON_IDENTITY_FIELDS:
+        value = request.form.get(field_name, "").strip()
+        if value:
+            attributes[attr_key] = value
+        else:
+            attributes.pop(attr_key, None)
+    return attributes
+
+
+@bp.route("/entities")
+def list_entities():
+    entity_type = request.args.get("type") or None
+    if entity_type not in _ENTITY_TYPES:
+        entity_type = None
+    query = request.args.get("q", "").strip()
+
+    with db.get_connection() as conn:
+        rows = db.list_entities(conn, entity_type=entity_type, query=query or None)
+        entities_view = [_entity_view(conn, row) for row in rows]
+
+    return render_template(
+        "entities_list.html", entities=entities_view, entity_type=entity_type, query=query,
+        entity_type_labels=_ENTITY_TYPE_LABELS,
+    )
+
+
+@bp.route("/entities/new", methods=["GET", "POST"])
+def new_entity():
+    if request.method == "GET":
+        preselect_type = request.args.get("type") or "person"
+        link_event_id = request.args.get("event_id", type=int)
+        return render_template(
+            "entity_form.html", entity=None, entity_type=preselect_type,
+            entity_type_labels=_ENTITY_TYPE_LABELS, link_event_id=link_event_id,
+        )
+
+    entity_type = request.form.get("entity_type", "").strip()
+    if entity_type not in _ENTITY_TYPES:
+        flash("Ogiltig typ.", "error")
+        return redirect(url_for("events.new_entity"))
+    label = request.form.get("label", "").strip()
+    if not label:
+        flash("Ange ett namn/en beteckning.", "error")
+        return redirect(url_for("events.new_entity", type=entity_type))
+    notes = request.form.get("notes", "").strip() or None
+    link_event_id = request.form.get("link_event_id", type=int)
+
+    registration_norm = None
+    attributes = None
+    if entity_type == "vehicle":
+        registration = request.form.get("registration", "").strip() or None
+        registration_norm = entities._normalize_plate(registration) if registration else None
+    elif entity_type == "person":
+        attributes = _person_identity_attributes_from_form() or None
+
+    with db.get_connection() as conn:
+        entity_id = db.insert_entity(
+            conn, entity_type=entity_type, label=label, registration=registration_norm,
+            attributes=attributes, notes=notes, source="manual",
+        )
+        if link_event_id is not None and db.get_event(conn, link_event_id) is not None:
+            db.link_entity_to_event(conn, entity_id, link_event_id, source="manual")
+        _save_entity_photo(conn, entity_id, request.files.get("photo"))
+
+    flash(f"{_ENTITY_TYPE_LABELS[entity_type]} tillagd.")
+    return redirect(url_for("events.entity_detail", entity_id=entity_id))
+
+
+@bp.route("/entities/<int:entity_id>", methods=["GET", "POST"])
+def entity_detail(entity_id: int):
+    with db.get_connection() as conn:
+        entity = db.get_entity(conn, entity_id)
+        if entity is None:
+            abort(404)
+
+        if request.method == "POST":
+            label = request.form.get("label", "").strip()
+            notes = request.form.get("notes", "").strip() or None
+            if label:
+                updates = {
+                    "label": label,
+                    "notes": notes,
+                }
+                if entity["entity_type"] == "vehicle":
+                    registration = request.form.get("registration", "").strip() or None
+                    updates["registration"] = entities._normalize_plate(registration) if registration else None
+                elif entity["entity_type"] == "person":
+                    existing_attributes = json.loads(entity["attributes"]) if entity["attributes"] else {}
+                    updates["attributes"] = _person_identity_attributes_from_form(existing_attributes)
+                db.update_entity(conn, entity_id, updates)
+            return redirect(url_for("events.entity_detail", entity_id=entity_id))
+
+        attributes = json.loads(entity["attributes"]) if entity["attributes"] else {}
+        linked_events = db.list_events_for_entity(conn, entity_id)
+        seen_with = [_entity_view(conn, row) for row in db.list_entities_seen_with(conn, entity_id)]
+
+    return render_template(
+        "entity_detail.html", entity=entity, attributes=attributes,
+        linked_events=linked_events, seen_with=seen_with,
+        entity_type_labels=_ENTITY_TYPE_LABELS,
+    )
+
+
+@bp.route("/entities/<int:entity_id>/delete", methods=["POST"])
+def delete_entity(entity_id: int):
+    with db.get_connection() as conn:
+        entity = db.get_entity(conn, entity_id)
+        if entity is None:
+            abort(404)
+        db.delete_entity(conn, entity_id)
+    if entity["photo_path"]:
+        Path(entity["photo_path"]).unlink(missing_ok=True)
+    flash("Posten har tagits bort.")
+    return redirect(url_for("events.list_entities"))
+
+
+@bp.route("/entities/<int:entity_id>/photo", methods=["POST"])
+def entity_photo(entity_id: int):
+    with db.get_connection() as conn:
+        if db.get_entity(conn, entity_id) is None:
+            abort(404)
+        _save_entity_photo(conn, entity_id, request.files.get("photo"))
+    return redirect(url_for("events.entity_detail", entity_id=entity_id))
+
+
+@bp.route("/entities/<int:entity_id>/photo/delete", methods=["POST"])
+def delete_entity_photo(entity_id: int):
+    with db.get_connection() as conn:
+        entity = db.get_entity(conn, entity_id)
+        if entity is None:
+            abort(404)
+        if entity["photo_path"]:
+            Path(entity["photo_path"]).unlink(missing_ok=True)
+            db.update_entity(conn, entity_id, {"photo_path": None})
+    return redirect(url_for("events.entity_detail", entity_id=entity_id))
+
+
+@bp.route("/entities/<int:entity_id>/photo/file")
+def entity_photo_file(entity_id: int):
+    with db.get_connection() as conn:
+        entity = db.get_entity(conn, entity_id)
+    if entity is None or not entity["photo_path"]:
+        abort(404)
+    return send_file(entity["photo_path"])
+
+
+@bp.route("/entities/<int:entity_id>/link", methods=["POST"])
+def link_entity(entity_id: int):
+    event_id = request.form.get("event_id", type=int)
+    with db.get_connection() as conn:
+        if db.get_entity(conn, entity_id) is None:
+            abort(404)
+        if event_id is None or db.get_event(conn, event_id) is None:
+            flash("Hittade ingen händelse med det ID:t.", "error")
+            return redirect(url_for("events.entity_detail", entity_id=entity_id))
+        db.link_entity_to_event(conn, entity_id, event_id, source="manual")
+    return redirect(url_for("events.entity_detail", entity_id=entity_id))
+
+
+@bp.route("/events/<int:event_id>/link-entity", methods=["POST"])
+def link_entity_to_event(event_id: int):
+    """Same link as link_entity, from the other end -- for the "Länka en
+    befintlig post" form on event_detail.html, which knows the event_id
+    already and asks the human for the entity_id."""
+    entity_id = request.form.get("entity_id", type=int)
+    with db.get_connection() as conn:
+        if db.get_event(conn, event_id) is None:
+            abort(404)
+        if entity_id is None or db.get_entity(conn, entity_id) is None:
+            flash("Hittade ingen post med det ID:t.", "error")
+            return redirect(url_for("events.event_detail", event_id=event_id))
+        db.link_entity_to_event(conn, entity_id, event_id, source="manual")
+    return redirect(url_for("events.event_detail", event_id=event_id))
+
+
+@bp.route("/entities/<int:entity_id>/unlink/<int:event_id>", methods=["POST"])
+def unlink_entity(entity_id: int, event_id: int):
+    redirect_to = request.form.get("redirect_to")
+    with db.get_connection() as conn:
+        db.unlink_entity_from_event(conn, entity_id, event_id)
+    if redirect_to == "event":
+        return redirect(url_for("events.event_detail", event_id=event_id))
+    return redirect(url_for("events.entity_detail", entity_id=entity_id))
+
+
+def _entity_view(conn, row: sqlite3.Row) -> dict:
+    return {
+        "row": row,
+        "attributes": json.loads(row["attributes"]) if row["attributes"] else {},
+        "event_count": len(db.list_events_for_entity(conn, row["id"])),
+    }
 
 
 @bp.route("/attachments/<int:attachment_id>")

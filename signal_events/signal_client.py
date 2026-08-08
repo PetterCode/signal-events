@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-from . import config, db, naming, parser
+from . import config, db, entities, naming, parser
 
 
 class SignalCliError(RuntimeError):
@@ -156,7 +156,8 @@ def ingest_envelope(
     reported_by = sender_name or sender_number
     fields = parser.parse_event_fields(body, reported_by=reported_by)
     fields["is_sensor"] = is_sensor
-    db.insert_event(conn, message_id=message_id, fields=fields)
+    event_id = db.insert_event(conn, message_id=message_id, fields=fields)
+    entities.sync_event_entities(conn, event_id)
     return True
 
 

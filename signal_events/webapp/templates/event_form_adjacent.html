@@ -52,6 +52,19 @@
 
       <div id="person-panel" class="card" style="display:none;margin-top:0.5rem">
         <p style="font-size:0.8rem;color:#666;margin-bottom:0.5rem">
+          Identitetsuppgifter &mdash; fyll i det som är känt, lämna resten
+          tomt. Foto läggs till i efterhand, på personens egen sida under
+          Personer, fordon och objekt.
+        </p>
+        <label for="person-name">Namn</label>
+        <input type="text" id="person-name" placeholder="Om känt/uppgivet...">
+        <label for="person-alias">Alias</label>
+        <input type="text" id="person-alias" placeholder="Smeknamn, känt alias...">
+        <label for="person-nationality">Nationalitet</label>
+        <input type="text" id="person-nationality" placeholder="Om känt/uppgivet...">
+        <label for="person-dob">Födelsedatum</label>
+        <input type="text" id="person-dob" placeholder="ÅÅÅÅ-MM-DD, om känt">
+        <p style="font-size:0.8rem;color:#666;margin:0.75rem 0 0.5rem">
           Personbeskrivning enligt A&ndash;H &mdash; fyll i det som går att
           observera, lämna resten tomt.
         </p>
@@ -320,6 +333,10 @@
       }
 
       setupPanel("add-person-btn", "person-panel", "person-panel-add", "person-panel-cancel", "Person", [
+        ["Namn", "person-name"],
+        ["Alias", "person-alias"],
+        ["Nationalitet", "person-nationality"],
+        ["Födelsedatum", "person-dob"],
         ["A – Age", "ah-age"],
         ["B – Build", "ah-build"],
         ["C – Colour", "ah-colour"],

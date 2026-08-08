@@ -81,6 +81,19 @@
 
       <div id="person-panel" class="card" style="display:none;margin-top:0.5rem">
         <p style="font-size:0.8rem;color:#666;margin-bottom:0.5rem">
+          Identitetsuppgifter &mdash; fyll i det som är känt, lämna resten
+          tomt. Foto läggs till i efterhand, på personens egen sida under
+          Personer, fordon och objekt.
+        </p>
+        <label for="person-name">Namn</label>
+        <input type="text" id="person-name" placeholder="Om känt/uppgivet...">
+        <label for="person-alias">Alias</label>
+        <input type="text" id="person-alias" placeholder="Smeknamn, känt alias...">
+        <label for="person-nationality">Nationalitet</label>
+        <input type="text" id="person-nationality" placeholder="Om känt/uppgivet...">
+        <label for="person-dob">Födelsedatum</label>
+        <input type="text" id="person-dob" placeholder="ÅÅÅÅ-MM-DD, om känt">
+        <p style="font-size:0.8rem;color:#666;margin:0.75rem 0 0.5rem">
           Personbeskrivning enligt A&ndash;H &mdash; fyll i det som går att
           observera, lämna resten tomt.
         </p>
@@ -194,6 +207,55 @@
         <button type="submit">Spara</button>
       </div>
     </form>
+  </div>
+
+  <div class="card">
+    <h3>Kopplade personer, fordon och objekt</h3>
+    {% if not linked_entities %}
+      <p style="font-size:0.85rem;color:#666">
+        Inga kopplade poster ännu. Personer/fordon skrivna i Kännetecken
+        via "+ Lägg till person"/"+ Lägg till fordon" ovan kopplas hit
+        automatiskt när händelsen sparas.
+      </p>
+    {% else %}
+      <table>
+        <thead>
+          <tr><th>Typ</th><th>Namn/beteckning</th><th>Reg.nr</th><th>Källa</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for e in linked_entities %}
+            <tr>
+              <td><span class="badge badge-ok">{{ entity_type_labels[e.entity_type] }}</span></td>
+              <td>{{ e.label }}</td>
+              <td class="mono">{{ e.registration or "—" }}</td>
+              <td>{{ "Automatisk" if e.link_source == "auto" else "Manuell" }}</td>
+              <td style="white-space:nowrap">
+                <a href="{{ url_for('events.entity_detail', entity_id=e.id) }}">Öppna</a>
+                <form method="post" style="display:inline"
+                      action="{{ url_for('events.unlink_entity', entity_id=e.id, event_id=event.id) }}">
+                  <input type="hidden" name="redirect_to" value="event">
+                  <button type="submit" class="btn-secondary" style="padding:0.1rem 0.5rem;font-size:0.75rem">
+                    Ta bort länk
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    <h4 style="margin-top:1rem">Länka en befintlig post</h4>
+    <form method="post" action="{{ url_for('events.link_entity_to_event', event_id=event.id) }}"
+          style="display:flex;gap:0.5rem;align-items:center;max-width:26rem">
+      <input type="number" name="entity_id" placeholder="Objekt-ID" required style="width:auto;flex:1">
+      <button type="submit" class="btn-secondary">Länka</button>
+    </form>
+    <p class="map-hint">
+      Objekt-ID hittas på <a href="{{ url_for('events.list_entities') }}">Personer, fordon och objekt</a>.
+      Eller <a href="{{ url_for('events.new_entity', event_id=event.id) }}">lägg till en ny post</a>
+      länkad direkt till denna händelse.
+    </p>
   </div>
 
   <div class="card">
@@ -414,6 +476,10 @@
       }
 
       setupPanel("add-person-btn", "person-panel", "person-panel-add", "person-panel-cancel", "Person", [
+        ["Namn", "person-name"],
+        ["Alias", "person-alias"],
+        ["Nationalitet", "person-nationality"],
+        ["Födelsedatum", "person-dob"],
         ["A – Age", "ah-age"],
         ["B – Build", "ah-build"],
         ["C – Colour", "ah-colour"],

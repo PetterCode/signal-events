@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Lägg till post{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('events.list_entities') }}">&larr; Tillbaka till Personer, fordon och objekt</a></p>
+  <h1>Lägg till person, fordon eller objekt</h1>
+
+  <div class="card">
+    <form method="post" enctype="multipart/form-data">
+      <label for="entity_type">Typ</label>
+      <select id="entity_type" name="entity_type">
+        {% for key in ["person", "vehicle", "object"] %}
+          <option value="{{ key }}" {{ "selected" if entity_type == key else "" }}>
+            {{ entity_type_labels[key] }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <label for="label">Namn/beteckning</label>
+      <input type="text" id="label" name="label" required
+             placeholder="T.ex. &quot;Okänd man, mörk jacka&quot; eller &quot;Vit skåpbil&quot;">
+
+      <div id="vehicle-fields">
+        <label for="registration">Reg.nr</label>
+        <input type="text" id="registration" name="registration">
+      </div>
+
+      <div id="person-fields">
+        <label for="name">Namn</label>
+        <input type="text" id="name" name="name" placeholder="Om känt/uppgivet...">
+        <label for="alias">Alias</label>
+        <input type="text" id="alias" name="alias" placeholder="Smeknamn, känt alias...">
+        <label for="nationality">Nationalitet</label>
+        <input type="text" id="nationality" name="nationality" placeholder="Om känt/uppgivet...">
+        <label for="date_of_birth">Födelsedatum</label>
+        <input type="text" id="date_of_birth" name="date_of_birth" placeholder="ÅÅÅÅ-MM-DD, om känt">
+      </div>
+
+      <label for="notes">Anteckningar</label>
+      <textarea id="notes" name="notes" class="auto-grow" placeholder="Kännetecken, observationer, m.m."></textarea>
+
+      <label for="photo">Foto</label>
+      <input type="file" id="photo" name="photo" accept="image/*">
+
+      {% if link_event_id %}
+        <input type="hidden" name="link_event_id" value="{{ link_event_id }}">
+        <p class="map-hint">Länkas direkt till händelse-ID {{ link_event_id }}.</p>
+      {% endif %}
+
+      <div class="actions">
+        <button type="submit">Spara</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    (function () {
+      function autoGrow(el) {
+        el.style.height = "auto";
+        el.style.height = el.scrollHeight + "px";
+      }
+      document.querySelectorAll("textarea.auto-grow").forEach(function (el) {
+        autoGrow(el);
+        el.addEventListener("input", function () { autoGrow(el); });
+      });
+    })();
+
+    (function () {
+      var typeSelect = document.getElementById("entity_type");
+      var vehicleFields = document.getElementById("vehicle-fields");
+      var personFields = document.getElementById("person-fields");
+      function updateVisibility() {
+        vehicleFields.style.display = typeSelect.value === "vehicle" ? "" : "none";
+        personFields.style.display = typeSelect.value === "person" ? "" : "none";
+      }
+      typeSelect.addEventListener("change", updateVisibility);
+      updateVisibility();
+    })();
+  </script>
+{% endblock %}
