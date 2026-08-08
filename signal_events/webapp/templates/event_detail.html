@@ -74,6 +74,58 @@
 
       <label for="marks">Kännetecken</label>
       <input type="text" id="marks" name="marks" value="{{ event.marks or '' }}">
+      <div class="actions" style="margin-top:0.4rem">
+        <button type="button" class="btn-secondary" id="add-person-btn">+ Lägg till person</button>
+        <button type="button" class="btn-secondary" id="add-vehicle-btn">+ Lägg till fordon</button>
+      </div>
+
+      <div id="person-panel" class="card" style="display:none;margin-top:0.5rem">
+        <p style="font-size:0.8rem;color:#666;margin-bottom:0.5rem">
+          Personbeskrivning enligt A&ndash;H &mdash; fyll i det som går att
+          observera, lämna resten tomt.
+        </p>
+        <label for="ah-age">A &ndash; Age</label>
+        <input type="text" id="ah-age" placeholder="Uppskattad ålder...">
+        <label for="ah-build">B &ndash; Build</label>
+        <input type="text" id="ah-build" placeholder="Kroppsform...">
+        <label for="ah-colour">C &ndash; Colour</label>
+        <input type="text" id="ah-colour" placeholder="Hudfärg, klädfärger...">
+        <label for="ah-distinguishing">D &ndash; Distinguishing marks</label>
+        <input type="text" id="ah-distinguishing" placeholder="Ärr, tatueringar, kläder...">
+        <label for="ah-elevation">E &ndash; Elevation</label>
+        <input type="text" id="ah-elevation" placeholder="Uppskattad längd...">
+        <label for="ah-face">F &ndash; Face</label>
+        <input type="text" id="ah-face" placeholder="Ansiktsform, hy, ansiktshår...">
+        <label for="ah-gait">G &ndash; Gait</label>
+        <input type="text" id="ah-gait" placeholder="Gångstil...">
+        <label for="ah-hair">H &ndash; Hair</label>
+        <input type="text" id="ah-hair" placeholder="Hårfärg, längd, frisyr...">
+        <div class="actions">
+          <button type="button" id="person-panel-add">Lägg till i Kännetecken</button>
+          <button type="button" class="btn-secondary" id="person-panel-cancel">Avbryt</button>
+        </div>
+      </div>
+
+      <div id="vehicle-panel" class="card" style="display:none;margin-top:0.5rem">
+        <p style="font-size:0.8rem;color:#666;margin-bottom:0.5rem">
+          Fordonsbeskrivning enligt SCRIM &mdash; fyll i det som går att
+          observera, lämna resten tomt.
+        </p>
+        <label for="scrim-size">S &ndash; Size</label>
+        <input type="text" id="scrim-size" placeholder="Storlek och fordonstyp...">
+        <label for="scrim-colour">C &ndash; Colour</label>
+        <input type="text" id="scrim-colour" placeholder="Fordonets färg...">
+        <label for="scrim-registration">R &ndash; Registration</label>
+        <input type="text" id="scrim-registration" placeholder="ABC 123, SE">
+        <label for="scrim-identifying">I &ndash; Identifying marks</label>
+        <input type="text" id="scrim-identifying" placeholder="Antenner, symboler, bucklor...">
+        <label for="scrim-model">M &ndash; Model</label>
+        <input type="text" id="scrim-model" placeholder="T.ex. Toyota Hilux, Volvo FH">
+        <div class="actions">
+          <button type="button" id="vehicle-panel-add">Lägg till i Kännetecken</button>
+          <button type="button" class="btn-secondary" id="vehicle-panel-cancel">Avbryt</button>
+        </div>
+      </div>
 
       <label for="reported_by">Rapporterad av</label>
       <input type="text" id="reported_by" name="reported_by" value="{{ event.reported_by or '' }}">
@@ -276,5 +328,85 @@
       var mm = String(now.getMinutes()).padStart(2, "0");
       document.getElementById("event_time").value = dd + hh + mm;
     });
+  </script>
+  <script>
+    (function () {
+      // Structured person (A-H) / vehicle (SCRIM) description helpers, in
+      // the style of 7Srapport.com's own identification-help panels --
+      // fill in whatever's observable, and it's composed into a single
+      // readable fragment appended to Kännetecken (the same free-text
+      // field their tool pastes SCRIM/A-H text into), rather than adding
+      // new database columns for something that's still just descriptive
+      // text on the event.
+      var marksInput = document.getElementById("marks");
+
+      function appendToMarks(text) {
+        marksInput.value = marksInput.value ? marksInput.value + "; " + text : text;
+      }
+
+      // Numbers each addition (Person 1, Person 2, ...) by scanning what's
+      // already in Kännetecken rather than keeping an in-memory counter --
+      // works the same whether this is a fresh form or an existing event
+      // being edited (event_detail.html) that already has "Person 1 (...)"
+      // in its saved Kännetecken from before.
+      function nextIndex(prefix) {
+        var re = new RegExp(prefix + " (\\d+) \\(", "g");
+        var max = 0;
+        var match;
+        while ((match = re.exec(marksInput.value)) !== null) {
+          max = Math.max(max, parseInt(match[1], 10));
+        }
+        return max + 1;
+      }
+
+      function composeFromFields(prefix, fields) {
+        var parts = [];
+        fields.forEach(function (f) {
+          var value = document.getElementById(f[1]).value.trim();
+          if (value) parts.push(f[0] + ": " + value);
+        });
+        return parts.length ? prefix + " (" + parts.join(", ") + ")" : null;
+      }
+
+      function setupPanel(toggleBtnId, panelId, addBtnId, cancelBtnId, prefix, fields) {
+        var toggleBtn = document.getElementById(toggleBtnId);
+        var panel = document.getElementById(panelId);
+
+        toggleBtn.addEventListener("click", function () {
+          panel.style.display = panel.style.display === "none" ? "block" : "none";
+        });
+        document.getElementById(cancelBtnId).addEventListener("click", function () {
+          fields.forEach(function (f) { document.getElementById(f[1]).value = ""; });
+          panel.style.display = "none";
+        });
+        document.getElementById(addBtnId).addEventListener("click", function () {
+          var text = composeFromFields(prefix + " " + nextIndex(prefix), fields);
+          if (text) {
+            appendToMarks(text);
+            fields.forEach(function (f) { document.getElementById(f[1]).value = ""; });
+          }
+          panel.style.display = "none";
+        });
+      }
+
+      setupPanel("add-person-btn", "person-panel", "person-panel-add", "person-panel-cancel", "Person", [
+        ["A – Age", "ah-age"],
+        ["B – Build", "ah-build"],
+        ["C – Colour", "ah-colour"],
+        ["D – Distinguishing marks", "ah-distinguishing"],
+        ["E – Elevation", "ah-elevation"],
+        ["F – Face", "ah-face"],
+        ["G – Gait", "ah-gait"],
+        ["H – Hair", "ah-hair"],
+      ]);
+
+      setupPanel("add-vehicle-btn", "vehicle-panel", "vehicle-panel-add", "vehicle-panel-cancel", "Fordon", [
+        ["S – Size", "scrim-size"],
+        ["C – Colour", "scrim-colour"],
+        ["R – Registration", "scrim-registration"],
+        ["I – Identifying marks", "scrim-identifying"],
+        ["M – Model", "scrim-model"],
+      ]);
+    })();
   </script>
 {% endblock %}
