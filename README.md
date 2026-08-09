@@ -254,6 +254,53 @@ it logs the error to the terminal and stops itself — the web UI keeps
 working normally either way. `--watch-poll-timeout` mirrors `watch`'s
 `--poll-timeout`.
 
+**Structured person/vehicle descriptions (Kännetecken).** On any event's
+edit form, "+ Lägg till person" and "+ Lägg till fordon" open a small
+panel of labeled fields — SCRIM (Size/Colour/Registration/Identifying
+marks/Model) for a vehicle, A–H (Age/Build/Colour/Distinguishing
+marks/Elevation/Face/Gait/Hair) for a person, matching the mnemonics
+used by [7srapport.com](https://7srapport.com/) — plus, for a person,
+Namn/Alias/Nationalitet/Födelsedatum when any of those happen to be
+known. Filling in a few fields and clicking "Lägg till i Kännetecken"
+composes them into readable free text (`"Fordon 1 (S – Size: Kombi, R –
+Registration: ABC123)"`) appended to the Kännetecken field — multiple
+people/vehicles in one report are numbered automatically (Person 1,
+Person 2, ...). This is a convenience for writing consistent, structured
+descriptions; the underlying field is still plain text a human can edit
+freely afterward.
+
+**Personer, fordon och objekt — a database of who and what keeps
+showing up.** Every time an event is saved, its Kännetecken text is
+scanned (`entities.py`, rule-based, offline) for these composer blocks
+and for a bare `Reg.Nr: ...` mention, and each person/vehicle found is
+created (or matched) as its own record on the "Personer, fordon och
+objekt" nav tab and linked to that event. A vehicle is matched **across
+different reports** by its normalized plate — the same real vehicle
+mentioned in three separate sightings becomes one record with three
+linked events, not three unrelated ones; a person has no such reliable
+cross-report identifier, so each report's own "Person 1"/"Person 2" stays
+a distinct record unless a human manually links two together. Editing or
+resaving an event re-syncs its automatically-found records without
+touching anything added by hand. Objects (a found item, a suspicious
+package, ...) have no automatic marker to key off and are always added
+manually, from the same page. Every record's own page shows every event
+it's linked to, everything "seen together with" it (other records
+sharing at least one of the same events), an optional uploaded photo,
+and free-text notes — and supports linking/unlinking an event, or
+deleting the record, by hand at any time.
+
+**Bevakningslista (watchlist).** The "Skicka bevakningslista" button on
+Personer, fordon och objekt sends a focused PDF list to Signal: every
+record linked to 2 or more events (recurring, straight from the
+database — no text-similarity guessing involved) plus every record a
+human has flagged with its own "Bevaka" checkbox, regardless of its own
+event count. Sent to its own group by default `SIGNAL_EVENTS_RECURRING_GROUP`
+(`"Stabsassistent test-återkommande"`) — the same group used to be fed
+from the "Sammanställd hotbedömning" page's own recurring-vehicle/person
+text-clustering (see "RED is reserved for..." below), which remains a
+separate, purely informational part of the automatic threat score and is
+no longer what this button sends.
+
 **Kart-vy — position of events on a map.** If a report's "Ställe" field (or
 its body text) contains a coordinate, the position is converted to lat/lon
 automatically and offline (`signal_events/coordinates.py`) — no network
@@ -832,14 +879,10 @@ linked, group not found, no network), it's reported inline on the page
 and nothing else is affected — the underlying PDF generation and
 download options keep working.
 
-The summary page also has a **"Skicka lista över återkommande"** button —
-sends just the recurring/suspicious vehicles, people, and other
-observations (the correlated groups and their evidence), without the
-threat-level badge, score, or motivering. A focused watchlist rather than
-the full assessment, sent to its own group by default
-`SIGNAL_EVENTS_RECURRING_GROUP` (`"Stabsassistent test-återkommande"`) —
-separate from both the incident-intake group (`watch`) and the
-report/adjacent-status group above.
+The "Personer, fordon och objekt" page has its own **"Skicka
+bevakningslista"** button — see "Bevakningslista (watchlist)" above —
+sent to its own group, separate from both the incident-intake group
+(`watch`) and the report/adjacent-status group above.
 
 ## Message format expectations
 
@@ -876,8 +919,12 @@ those two can genuinely differ from who's actually reporting.
 
 ```
 data/
-  events.db          SQLite database (messages, attachments, events)
-  attachments/<msg>/ copied image files from Signal messages
+  events.db              SQLite database (messages, attachments, events,
+                          entities/entity_event_links for Personer, fordon
+                          och objekt)
+  attachments/<msg>/     copied image files from Signal messages
+  attachments/entities/<id>/  uploaded reference photos for a person/
+                          vehicle/object record
 ```
 
 Back this directory up like any other sensitive local data store — it's
