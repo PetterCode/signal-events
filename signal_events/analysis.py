@@ -413,11 +413,10 @@ def _assess_threat(
         # indicators above, not pattern volume by itself.
         level = "yellow"
         reasons.append(
-            "Mönsterpoängen skulle historiskt ha motiverat RÖD, men RÖD "
-            "kräver nu återkommande allvarliga indikationer (upprepade "
-            "beväpnade personer, upprepad misstänkt sprängladdning, eller "
-            "upprepade tecken på sabotageförsök) — manuell bedömning "
-            "rekommenderas ändå."
+            "Mönsterpoängen är hög, men RÖD kräver återkommande allvarliga "
+            "indikationer (upprepade beväpnade personer, upprepad "
+            "misstänkt sprängladdning, eller upprepade tecken på "
+            "sabotageförsök) — manuell bedömning rekommenderas ändå."
         )
     elif total_score > _GREEN_MAX or any_severe_hit:
         level = "yellow"
