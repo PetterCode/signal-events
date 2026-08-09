@@ -61,3 +61,48 @@ def test_import_text_creates_events():
         by_reporter = {e["reported_by"] for e in events}
         assert "Alice" in by_reporter
         assert all(e["needs_review"] == 1 for e in events)
+
+
+def test_import_text_captures_a_recurring_freeform_person_across_two_7s_reports():
+    """Regression: file-imported 7S-format reports typed up outside the
+    app's own kännetecken composer describe a person in plain prose in
+    the "Symbol" line, not the "Person N (...)" block format -- before
+    entities.py's freeform fallback, that meant a recurring person could
+    be described identically in a dozen imported reports and never once
+    show up on the bevakningslista, since no person entity was ever
+    created at all."""
+    text = (
+        "Till: Stabsassistent\n"
+        "Från: Vakt A\n"
+        "TNR: 010100\n"
+        "Stund: 010100\n"
+        "Ställe: Norra grinden\n"
+        "Styrka: 1\n"
+        "Slag: Civil\n"
+        "Sysselsättning: Stod och tittade mot stängslet en stund\n"
+        "Symbol: Man i mörka kläder, ca 30 år, kort mörkt hår\n"
+        "Sagesman: Vakt A\n"
+        "Sedan: Fortsatt bevakning\n"
+        "---\n"
+        "Till: Stabsassistent\n"
+        "Från: Vakt B\n"
+        "TNR: 020200\n"
+        "Stund: 020200\n"
+        "Ställe: Södra grinden\n"
+        "Styrka: 1\n"
+        "Slag: Civil\n"
+        "Sysselsättning: Gick fram och tillbaka utanför stängslet\n"
+        "Symbol: Man i mörka kläder, ca 30 år, kort mörkt hår, mörk keps\n"
+        "Sagesman: Vakt B\n"
+        "Sedan: Noterat i vaktloggen"
+    )
+    with db.get_connection() as conn:
+        event_ids = importer.import_text(conn, text, filename="historik.txt")
+        assert len(event_ids) == 2
+
+        persons = db.list_entities(conn, entity_type="person")
+        assert len(persons) == 1
+
+        watchlist = db.list_watchlist_entities(conn)
+        assert len(watchlist) == 1
+        assert watchlist[0]["event_count"] == 2

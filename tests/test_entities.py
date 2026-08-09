@@ -90,6 +90,39 @@ def test_extract_entities_returns_empty_list_for_blank_input():
     assert entities.extract_entities("Bara vanlig fritext, inga kännetecken.") == []
 
 
+def test_extract_entities_falls_back_to_a_freeform_person_when_object_reads_as_a_person():
+    """Regression: a report typed up outside the app's own kännetecken
+    composer (e.g. a file import from another system) never contains a
+    "Person N (...)" block, so without this fallback it contributed
+    nothing to the entities database at all -- never showing up as
+    recurring no matter how many times the same person was described."""
+    found = entities.extract_entities(
+        marks="Man i mörka kläder, ca 30 år", raw_text=None, object_type="Civil",
+    )
+    assert len(found) == 1
+    assert found[0].entity_type == "person"
+    assert found[0].label == "Civil: Man i mörka kläder, ca 30 år"
+    assert found[0].match == "similarity"
+
+
+def test_extract_entities_freeform_person_fallback_skips_non_person_object_types():
+    found = entities.extract_entities(marks="Grå skåpbil", raw_text=None, object_type="Bil")
+    assert found == []
+
+
+def test_extract_entities_freeform_person_fallback_does_not_duplicate_a_composer_block():
+    marks = "Person 1 (A – Age: 30-40)"
+    found = entities.extract_entities(marks, raw_text=None, object_type="Civil")
+    assert len(found) == 1
+    assert found[0].label == "Person 1"
+
+
+def test_extract_entities_freeform_person_fallback_with_no_marks_uses_the_object_type_alone():
+    found = entities.extract_entities(marks=None, raw_text=None, object_type="Man")
+    assert len(found) == 1
+    assert found[0].label == "Man"
+
+
 # --- sync_event_entities -----------------------------------------------------
 
 def test_sync_creates_and_links_an_auto_person_entity():
@@ -163,6 +196,49 @@ def test_sync_does_not_merge_different_persons_across_different_events_with_the_
         first_event = _make_event(conn, signal_timestamp=1, marks="Person 1 (A – Age: 20)")
         entities.sync_event_entities(conn, first_event)
         second_event = _make_event(conn, signal_timestamp=2, marks="Person 1 (A – Age: 60)")
+        entities.sync_event_entities(conn, second_event)
+
+        first_id = db.list_entities_for_event(conn, first_event)[0]["id"]
+        second_id = db.list_entities_for_event(conn, second_event)[0]["id"]
+        assert first_id != second_id
+
+
+def test_sync_merges_similar_freeform_person_descriptions_across_two_events():
+    """The bug this fallback fixes: two file-imported reports, never
+    touching the app's kännetecken composer, describing what's plausibly
+    the same person -- must land on the same entity so it shows up as
+    recurring on the bevakningslista, exactly like a repeated vehicle
+    plate already does."""
+    with db.get_connection() as conn:
+        first_event = _make_event(
+            conn, signal_timestamp=1, object="Civil",
+            marks="Man i mörka kläder, ca 30 år, kort mörkt hår",
+        )
+        entities.sync_event_entities(conn, first_event)
+        second_event = _make_event(
+            conn, signal_timestamp=2, object="Civil",
+            marks="Man i mörka kläder, ca 30 år, kort mörkt hår, mörk keps",
+        )
+        entities.sync_event_entities(conn, second_event)
+
+        first_id = db.list_entities_for_event(conn, first_event)[0]["id"]
+        second_id = db.list_entities_for_event(conn, second_event)[0]["id"]
+        assert first_id == second_id
+
+        watchlist = db.list_watchlist_entities(conn)
+        assert len(watchlist) == 1
+        assert watchlist[0]["event_count"] == 2
+
+
+def test_sync_does_not_merge_dissimilar_freeform_person_descriptions():
+    with db.get_connection() as conn:
+        first_event = _make_event(
+            conn, signal_timestamp=1, object="Civil", marks="Man i mörka kläder, ca 30 år",
+        )
+        entities.sync_event_entities(conn, first_event)
+        second_event = _make_event(
+            conn, signal_timestamp=2, object="Civil", marks="Kvinna, röd jacka, cykel",
+        )
         entities.sync_event_entities(conn, second_event)
 
         first_id = db.list_entities_for_event(conn, first_event)[0]["id"]

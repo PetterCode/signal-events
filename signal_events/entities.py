@@ -19,6 +19,20 @@ Only persons and vehicles are auto-extracted -- "other objects" have no
 reliable structural marker to key off in free text, so those are
 catalogue entries a human adds by hand on the "Personer, fordon och
 objekt" page (see webapp/routes.py's /entities routes).
+
+A person has a second, weaker extraction route on top of the composer
+block: reports that never went through the app's own kännetecken
+composer (typed-up historical reports, imports from another system)
+almost never contain the "Person N (...)" block, so without a fallback
+they'd never contribute a person to this database at all -- a real gap,
+since precisely that kind of freeform report is what a file import
+brings in. When the event's `object` field reads as a person sighting
+(see analysis._classify_object_type) and no composer block was found,
+its free-text description is extracted as a person entity and matched
+against existing ones by the same Jaccard token-similarity clustering
+analysis.py's now-retired recurring-list feature used for exactly this
+-- not exact identity like a vehicle's plate, but the best a rule-based
+parser can do for prose with no other structural marker.
 """
 
 from __future__ import annotations
@@ -29,6 +43,7 @@ import sqlite3
 
 from . import db
 from .analysis import _PLATE_RE as _REG_NR_RE
+from .analysis import _DESC_SIMILARITY_THRESHOLD, _classify_object_type, _jaccard, _tokenize
 
 # Matches the structured blocks the kännetecken composer appends (see
 # event_form.html's person/vehicle panels), e.g.
@@ -73,20 +88,38 @@ def _parse_block_attributes(block_text: str) -> dict[str, str]:
 class ParsedEntity:
     def __init__(
         self, entity_type: str, label: str, attributes: dict[str, str],
-        registration: str | None = None,
+        registration: str | None = None, match: str = "label",
     ):
         self.entity_type = entity_type
         self.label = label
         self.attributes = attributes
         self.registration = registration
+        # How sync_event_entities should look for an existing record to
+        # link instead of creating a new one: "label" -- this same
+        # event's own previous auto-extraction, by exact label (stable
+        # across re-saves of one report, e.g. composer blocks); a
+        # vehicle with `registration` set always matches by plate
+        # instead, regardless of this field. "similarity" -- no
+        # reliable identity of its own, so match the best existing
+        # entity of the same type by Jaccard token similarity over the
+        # label text (the freeform-person fallback below).
+        self.match = match
 
 
-def extract_entities(marks: str | None, raw_text: str | None = None) -> list[ParsedEntity]:
+def extract_entities(
+    marks: str | None, raw_text: str | None = None, object_type: str | None = None,
+) -> list[ParsedEntity]:
     """Finds every "Person N (...)"/"Fordon N (...)" composer block in
     `marks`, plus any standalone "Reg.Nr: ..." plate mention
     (analysis._PLATE_RE) in either `marks` or `raw_text` not already
     covered by a Fordon block -- so both freshly composed reports and
-    older/imported free text that predates the composer are recognised."""
+    older/imported free text that predates the composer are recognised.
+
+    If no composer "Person N (...)" block was found and `object_type`
+    (the event's `object` field) reads as a person sighting, the
+    event's own free-text description is extracted as a person entity
+    too, flagged for similarity-based matching in sync_event_entities --
+    see this module's docstring for why."""
     entities: list[ParsedEntity] = []
     seen_plates: set[str] = set()
 
@@ -122,34 +155,65 @@ def extract_entities(marks: str | None, raw_text: str | None = None) -> list[Par
             registration=plate,
         ))
 
+    object_type = (object_type or "").strip()
+    has_person_block = any(e.entity_type == "person" for e in entities)
+    if object_type and not has_person_block and _classify_object_type(object_type) == "person":
+        sample = (marks or "").strip()
+        label = f"{object_type.capitalize()}: {sample}" if sample else object_type.capitalize()
+        entities.append(ParsedEntity(
+            entity_type="person", label=label, attributes={}, match="similarity",
+        ))
+
     return entities
+
+
+def _find_similar_entity(conn: sqlite3.Connection, entity_type: str, label: str) -> int | None:
+    """Best existing entity of `entity_type` whose own label is similar
+    enough to `label` (same threshold/tokenizer analysis.py's retired
+    recurring-list feature used), or None if nothing clears the bar --
+    the identity fallback for a freeform person description, which has
+    no exact marker like a vehicle's plate to match on."""
+    tokens = _tokenize(label)
+    if not tokens:
+        return None
+    best_id, best_score = None, 0.0
+    for candidate in db.list_entities(conn, entity_type=entity_type):
+        score = _jaccard(tokens, _tokenize(candidate["label"]))
+        if score >= _DESC_SIMILARITY_THRESHOLD and score > best_score:
+            best_id, best_score = candidate["id"], score
+    return best_id
 
 
 def sync_event_entities(conn: sqlite3.Connection, event_id: int) -> None:
     """Re-derives event_id's auto-extracted person/vehicle entities from
-    its current `marks`/`raw_text` and replaces its previous auto links
-    with the new set. Safe (and idempotent) to call after every save,
-    including one where nothing actually changed.
+    its current `marks`/`raw_text`/`object` and replaces its previous
+    auto links with the new set. Safe (and idempotent) to call after
+    every save, including one where nothing actually changed.
 
     Matching an already-known entity, rather than creating a new one
     every time, works differently depending on what identity the parser
     found:
     - A vehicle with a registration plate is matched *globally*, across
-      every event -- same real plate, same entity -- and its attributes
-      are merged (existing values win) rather than overwritten, so a
-      fuller description picked up from one report isn't erased by a
-      thinner mention of the same plate in another.
-    - Anything else (a person, or a vehicle with no readable plate) has
-      no reliable cross-report identity, so it's only matched against
-      this *same event's* previous auto-extraction (by label, e.g.
-      "Person 1") to stay stable across repeated saves of one report,
-      without accidentally merging distinct people from different
-      reports just because both happened to be "Person 1" in their own
-      report."""
+      every event -- same real plate, same entity.
+    - A composer-block person/vehicle with no plate has no reliable
+      cross-report identity, so it's only matched against this *same
+      event's* previous auto-extraction (by label, e.g. "Person 1") to
+      stay stable across repeated saves of one report, without
+      accidentally merging distinct people from different reports just
+      because both happened to be "Person 1" in their own report.
+    - A freeform person (see extract_entities's fallback for reports
+      with no composer block) is matched *globally* too, like a plate,
+      but by Jaccard text similarity instead of exact identity -- the
+      only way to recognise "probably the same person" across two
+      independently typed-up descriptions.
+    In every matched case, attributes are merged (existing values win)
+    rather than overwritten, so a fuller description picked up from one
+    report isn't erased by a thinner mention of the same entity in
+    another."""
     event = db.get_event(conn, event_id)
     if event is None:
         return
-    parsed = extract_entities(event["marks"], event["raw_text"])
+    parsed = extract_entities(event["marks"], event["raw_text"], event["object"])
 
     previously_linked = db.list_entities_for_event(conn, event_id)
     previously_linked_ids = {row["id"] for row in previously_linked}
@@ -168,10 +232,15 @@ def sync_event_entities(conn: sqlite3.Connection, event_id: int) -> None:
                 entity_id = existing["id"]
                 merge_attributes = True
 
-        if entity_id is None:
+        if entity_id is None and item.match == "label":
             same_label = existing_auto_by_label.get(item.label)
             if same_label is not None and same_label["entity_type"] == item.entity_type:
                 entity_id = same_label["id"]
+
+        if entity_id is None and item.match == "similarity":
+            entity_id = _find_similar_entity(conn, item.entity_type, item.label)
+            if entity_id is not None:
+                merge_attributes = True
 
         if entity_id is not None:
             if merge_attributes:
