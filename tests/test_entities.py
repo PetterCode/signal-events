@@ -102,7 +102,6 @@ def test_extract_entities_falls_back_to_a_freeform_person_when_object_reads_as_a
     assert len(found) == 1
     assert found[0].entity_type == "person"
     assert found[0].label == "Civil: Man i mörka kläder, ca 30 år"
-    assert found[0].match == "similarity"
 
 
 def test_extract_entities_freeform_person_fallback_skips_non_person_object_types():
@@ -192,6 +191,16 @@ def test_sync_matches_the_same_vehicle_across_two_different_events_by_plate():
 
 
 def test_sync_does_not_merge_different_persons_across_different_events_with_the_same_label():
+    """A composer-derived person is deliberately *not* subject to the
+    cross-report similarity fallback (unlike the freeform case below) --
+    tried at realistic volume, the shared composer field labels
+    ("A – Age:", "B – Build:", ...) alone push unrelated people's Jaccard
+    scores close enough to the 0.5 threshold that real noise starts
+    coincidentally merging into false "recurring" records (verified
+    empirically while building the training scenario's own composer-
+    formatted noise). Same composer label ("Person 1") in two different
+    events isn't enough to merge them either -- same-event-label matching
+    only stabilizes a report across its own re-saves."""
     with db.get_connection() as conn:
         first_event = _make_event(conn, signal_timestamp=1, marks="Person 1 (A – Age: 20)")
         entities.sync_event_entities(conn, first_event)

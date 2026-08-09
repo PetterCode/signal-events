@@ -66,10 +66,26 @@ SIGNAL_EVENTS_DATA_DIR=./demo_data python demo/seed_demo.py --skip-events
 A longer, self-paced scenario for training or live demonstration: the
 **Importera från fil** page has a "Demo och övning" card with 10 buttons,
 "Dag 1" through "Dag 10", each importing that day's bundled file
-(`demo/training_days/dag_01.txt` .. `dag_10.txt`, ~30 reports each,
-also in 7S format) straight from the running app — no manual file
-upload needed, and it works against your normal `data/` just as well as
-an isolated one.
+(`demo/training_days/dag_01.txt` .. `dag_10.txt`, ~30 reports/day for
+days 1-4, ~40/day for days 5-10 -- see below -- also in 7S format)
+straight from the running app — no manual file upload needed, and it
+works against your normal `data/` just as well as an isolated one.
+
+Every person/vehicle observation, noise and signal alike, fills in the
+structured kännetecken composer fields (SCRIM for a vehicle, A-H for a
+person — see "Structured person/vehicle descriptions" above) rather than
+generic freeform prose, so clicking through the days actually populates
+**Personer, fordon och objekt** with real Age/Build/Colour/Size/Model
+attributes instead of leaving it empty — a concrete example to look at
+alongside a real report. From day 5 onward, each day also brings 10
+*extra* observations restricted to just the person/vehicle categories
+(on top of the normal ~30/day mix), once there's an actual recurring
+pattern worth having more raw material to sift through. The one
+exception is the recurring person in dark clothing itself, which stays
+freeform prose rather than composer text — see `entities.py`'s
+docstring for why only a freeform description gets matched across
+different reports; a composer block only ever stays stable across
+repeated saves of the *same* report, by design.
 
 Click through the days one at a time and watch **Sammanställd
 hotbedömning** change: days 1-3 are pure noise (wildlife, deliveries,

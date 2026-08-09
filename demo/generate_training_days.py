@@ -1,7 +1,13 @@
 """Generates the 10-day training scenario:
 
 - `demo/training_days/dag_01.txt` .. `dag_10.txt`, each ~30 reports in
-  7S-labeled format, for this unit's own incident stream.
+  7S-labeled format for this unit's own incident stream (days 5-10 get
+  10 more, see EXTRA_PERSON_VEHICLE_COUNT below). Every person/vehicle
+  observation -- noise and signal alike -- fills in the structured
+  kännetecken composer fields (A-H for a person, SCRIM for a vehicle,
+  see _person_symbol/_vehicle_symbol) rather than generic freeform
+  prose, so importing this scenario actually populates Personer, fordon
+  och objekt with real attributes instead of leaving it empty.
 - `demo/training_days/dag_01_sensor.txt` .. `dag_10_sensor.txt`, each 3
   automated sensor-trigger reports (tripwire, motion detector, camera) in
   the same 7S format, reported by a sensor gateway rather than a guard --
@@ -233,6 +239,113 @@ PEOPLE_ACTIONS = [
     "Fortsatte vidare utan att stanna",
 ]
 
+# Pools for the structured kännetecken composer fields (see
+# event_form.html's "+ Lägg till person"/"+ Lägg till fordon" panels) --
+# used to build a "Person 1 (A – Age: ..., ...)"/"Fordon 1 (S – Size:
+# ..., ...)" Symbol string for every person/vehicle event (noise and
+# signal alike) instead of a generic MARKS_FILLERS phrase, so the
+# imported scenario showcases the Personer/fordon/objekt database with
+# real attributes rather than empty freeform prose. Noise combinations
+# are still passed through _NoiseClusterGuard exactly like the old
+# filler-phrase noise did, so they can't accidentally read as a
+# "recurring" person/vehicle to either analysis.py's own clustering or
+# entities.py's cross-report similarity matching (see entities.py's
+# module docstring) -- only the deliberate signal events are meant to
+# recur, by reusing identical composer text at each occurrence.
+# Age ranges are short (mostly 2-digit numbers) so they carry almost no
+# weight of their own in the Jaccard-similarity check below (see
+# entities.py's _tokenize -- tokens of length <=2 are dropped, the same
+# noise-word filtering that also drops "1"/"på"/"ett" from prose), which
+# is exactly why Build/Colour/Distinguishing marks are the pools that
+# actually have to carry the discrimination -- kept wide enough (and
+# combined with a Distinguishing-marks phrase, see PERSON_MARKS_NOISE)
+# that two independently drawn noise people essentially never coincide.
+PERSON_AGES = ["18-25", "20-30", "30-40", "40-50", "50-60", "60-70"]
+PERSON_BUILDS = ["Smal", "Medel", "Kraftig", "Atletisk", "Kortvuxen", "Storvuxen"]
+PERSON_CLOTHING = [
+    "Ljusa kläder", "Mörka kläder", "Regnkläder", "Sportkläder",
+    "Vardagskläder", "Reflexväst", "Uniform", "Overall", "Kostym",
+]
+PERSON_MARKS_NOISE = [
+    "Inga särskilda kännetecken", "Bar en ryggsäck", "Talade i telefon",
+    "Hade en cykel", "Bar en väska", "Hade hörlurar", "Bar paraply",
+    "Hade en hund", "Höll i en karta", "Bar en termos", "Åt ett äpple",
+    "Läste på en skylt", "Band om skon", "Vinkade åt en bekant",
+]
+
+VEHICLE_SIZES = ["Liten", "Mellanstor", "Stor", "Kompakt", "Skåpformad"]
+VEHICLE_COLOURS = [
+    "Vit", "Grå", "Blå", "Röd", "Svart", "Silver", "Grön", "Beige", "Gul",
+]
+VEHICLE_MODELS = [
+    "Volvo", "Scania", "Mercedes Sprinter", "Iveco", "Ford Transit",
+    "Toyota Hilux", "Volkswagen Transporter", "MAN", "Renault Master",
+    "Fiat Ducato",
+]
+VEHICLE_MARKS_NOISE = [
+    "Inga särskilda kännetecken", "Omärkt", "Med reklamdekal",
+    "Med takräcke", "Med släp", "Med reflexmärkning",
+    "Med bolagsnamn på dörren", "Nyligen tvättad", "Med bucklor",
+    "Med stenskott i vindrutan", "Med extraljus", "Med taklucka",
+]
+
+# 3 letters + 3 digits, the same shape the scenario's own signal-event
+# plates (QAB456, and the adjacent units' LMN234/RST789) use -- excludes
+# visually-confusable letters (I/O/Q are easy to misread against 1/0/0)
+# the same way real Swedish plates avoid them.
+_PLATE_LETTERS = "ABCDEFGHJKLMNPRSTUVXYZ"
+_RESERVED_PLATES = {"QAB456", "LMN234", "RST789"}
+
+
+def _random_plate(rng: random.Random, used: set[str]) -> str:
+    """A plate never reused across the whole run (`used` is threaded
+    through every day, see main()), and never colliding with the van's
+    own QAB456 or either adjacent unit's plate -- so no noise vehicle
+    ever accidentally looks like a repeat sighting of one of those."""
+    while True:
+        plate = "".join(rng.choice(_PLATE_LETTERS) for _ in range(3)) + \
+            "".join(str(rng.randint(0, 9)) for _ in range(3))
+        if plate not in used and plate not in _RESERVED_PLATES:
+            used.add(plate)
+            return plate
+
+
+def _person_symbol(rng: random.Random, extra: str | None = None) -> str:
+    """`extra`, when given, is folded into the Distinguishing-marks value
+    itself (see _noise_event's disambiguation fallback) rather than
+    appended after the composer block's closing paren, so a forced
+    disambiguator still reads as something a guard could plausibly have
+    jotted down, not a stray debug tag."""
+    marks = rng.choice(PERSON_MARKS_NOISE)
+    if extra:
+        marks = f"{marks}, {extra}"
+    return (
+        f"Person 1 (A – Age: {rng.choice(PERSON_AGES)}, "
+        f"B – Build: {rng.choice(PERSON_BUILDS)}, "
+        f"C – Colour: {rng.choice(PERSON_CLOTHING)}, "
+        f"D – Distinguishing marks: {marks})"
+    )
+
+
+def _vehicle_symbol(rng: random.Random, used_plates: set[str], extra: str | None = None) -> str:
+    # Deliberately doesn't fold `slag` (already its own "Slag:" 7S field,
+    # e.g. "Sopbil") into Size here -- _NoiseClusterGuard buckets by slag,
+    # so repeating that same word inside every bucket member's own tokens
+    # would only inflate their baseline similarity to each other without
+    # adding any actual discriminating information. `extra` behaves like
+    # _person_symbol's own parameter above.
+    marks = rng.choice(VEHICLE_MARKS_NOISE)
+    if extra:
+        marks = f"{marks}, {extra}"
+    return (
+        f"Fordon 1 (S – Size: {rng.choice(VEHICLE_SIZES)}, "
+        f"C – Colour: {rng.choice(VEHICLE_COLOURS)}, "
+        f"R – Registration: {_random_plate(rng, used_plates)}, "
+        f"I – Identifying marks: {marks}, "
+        f"M – Model: {rng.choice(VEHICLE_MODELS)})"
+    )
+
+
 MISC = [
     ("Rutinpatrullering", "-", "Inget avvikande att rapportera"),
     ("Väderobservation", "-", "Nedsatt sikt på grund av dimma"),
@@ -247,7 +360,17 @@ NOISE_NEXT_STEPS = [
 
 
 def _rand_time(rng: random.Random, day: int) -> str:
-    return f"{day:02d}{rng.randint(0, 23):02d}{rng.randint(0, 59):02d}"
+    """Rejects an HHMM draw that would collide with one of that day's own
+    fixed sensor-event TNRs (see SENSOR_TNR_SUFFIX, defined further down
+    but already populated by the time this ever runs) -- with 30-40 human
+    reports drawn from 1440 possible minutes a day, a coincidental hit
+    became plausible once EXTRA_PERSON_VEHICLE_COUNT pushed later days'
+    volume up, so this is no longer astronomically unlikely enough to
+    leave to chance the way it was at the original ~30/day volume."""
+    while True:
+        hhmm = f"{rng.randint(0, 23):02d}{rng.randint(0, 59):02d}"
+        if hhmm not in SENSOR_TNR_SUFFIX.values():
+            return f"{day:02d}{hhmm}"
 
 
 class _NoiseClusterGuard:
@@ -278,8 +401,15 @@ class _NoiseClusterGuard:
         self._buckets.setdefault(key, []).append(tokens)
 
 
-def _noise_event(rng: random.Random, guard: _NoiseClusterGuard) -> dict:
-    category = rng.choice(["animal", "vehicle", "person", "misc"])
+def _noise_event(
+    rng: random.Random, guard: _NoiseClusterGuard, used_plates: set[str],
+    category: str | None = None,
+) -> dict:
+    """A single noise (non-signal) event. `category`, when given, forces
+    which pool it's drawn from -- used by generate_day's extra person/
+    vehicle observations for days 5-10 -- otherwise it's picked at random
+    like every other noise event."""
+    category = category or rng.choice(["animal", "vehicle", "person", "misc"])
     if category == "animal":
         slag, styrka = rng.choice(ANIMALS)
         activity = rng.choice(ANIMAL_ACTIONS)
@@ -292,12 +422,36 @@ def _noise_event(rng: random.Random, guard: _NoiseClusterGuard) -> dict:
     else:
         slag, styrka, activity = rng.choice(MISC)
 
+    # Person/vehicle noise gets a full kännetecken-composer Symbol (real
+    # Age/Build/Colour or Size/Colour/Registration/Model attributes,
+    # see _person_symbol/_vehicle_symbol) instead of a generic filler
+    # phrase, so it shows up properly on Personer, fordon och objekt --
+    # still rejection-sampled against the guard so a coincidentally
+    # similar combination never reads as a "recurring" match against the
+    # story's own deliberate signal events or another noise entry.
+    #
+    # This fallback triggers far more often for composer text than it
+    # used to for MARKS_FILLERS prose: every composer block shares field
+    # labels ("Age"/"Build"/"Colour"/"Distinguishing marks"/...) that
+    # analysis.py's own word-level Jaccard check (which this guard
+    # deliberately mirrors, see class docstring) counts as overlap
+    # regardless of the actual attribute values -- an inherent property
+    # of that check against structured text, not a bug here, and
+    # correctly guards against the same false "recurring pattern" this
+    # guard has always existed to prevent.
     for attempt in range(50):
-        symbol = f"{rng.choice(MARKS_FILLERS)}, {rng.choice(MARKS_DETAILS)}"
-        if attempt >= 25:
-            # Extremely unlucky run of collisions -- force a disambiguating
-            # word in as a last resort so this can never loop forever.
-            symbol = f"{symbol} (logg {rng.randint(1000, 9999)})"
+        extra = f"ärende {rng.randint(1000, 9999)}" if attempt >= 25 else None
+        if category == "person":
+            symbol = _person_symbol(rng, extra=extra)
+        elif category == "vehicle":
+            symbol = _vehicle_symbol(rng, used_plates, extra=extra)
+        else:
+            symbol = f"{rng.choice(MARKS_FILLERS)}, {rng.choice(MARKS_DETAILS)}"
+            if attempt >= 25:
+                # Extremely unlucky run of collisions -- force a
+                # disambiguating word in as a last resort so this can
+                # never loop forever.
+                symbol = f"{symbol} (logg {rng.randint(1000, 9999)})"
         if not guard.would_cluster(slag, symbol):
             break
     guard.accept(slag, symbol)
@@ -316,9 +470,22 @@ def _noise_event(rng: random.Random, guard: _NoiseClusterGuard) -> dict:
 # Deliberate escalating "signal" events, one list per day (1-indexed).
 # The van (QAB456) and the person in dark clothing recur across days by
 # reusing identical Symbol wording each time, so analysis.py's recurrence
-# grouping picks them up; the two armed sightings and two sabotage signs
-# are what push the threat level to RED once they've each happened twice.
-VAN_SYMBOL = "Grå skåpbil"
+# grouping picks them up. The van uses the structured kännetecken composer
+# format (safe: entities.py matches vehicles globally by the plate inside
+# Fordon 1's own R – Registration field, regardless of composer vs
+# freeform, so every van occurrence below sets reg_nr=None rather than a
+# separate 7S Reg.Nr line, matching how a real guard filling in the
+# composer -- not a bare Reg.Nr field, which doesn't exist on the app's
+# own event form -- would report it). The recurring person deliberately
+# stays freeform prose, *not* composer text: entities.py only gives a
+# freeform person cross-report similarity matching (see that module's
+# docstring for why composer text doesn't get the same treatment), so
+# freeform is the one format that actually keeps this person recurring
+# on Personer, fordon och objekt across its three occurrences below.
+VAN_SYMBOL = (
+    "Fordon 1 (S – Size: Mellanstor skåpbil, C – Colour: Grå, "
+    "R – Registration: QAB456, M – Model: Mercedes Sprinter)"
+)
 PERSON_SYMBOL = "Mörka kläder, mörk keps, mörk ryggsäck"
 
 # Each signal event may carry an "image" key naming a file under
@@ -339,19 +506,19 @@ SIGNAL_EVENTS: dict[int, list[dict]] = {
     3: [
         dict(place="Norra vägen", styrka="1", slag="Skåpbil",
              activity="Passerade i normal hastighet, ingen avvikelse",
-             symbol=VAN_SYMBOL, reg_nr="QAB456",
+             symbol=VAN_SYMBOL, reg_nr=None,
              next_steps="Noterat i vaktloggen"),
     ],
     4: [
         dict(place="Östra grinden", styrka="1", slag="Skåpbil",
              activity="Saktade ner vid grinden innan den körde vidare",
-             symbol=VAN_SYMBOL, reg_nr="QAB456",
+             symbol=VAN_SYMBOL, reg_nr=None,
              next_steps="Noterat i vaktloggen", image=IMG_VAN),
     ],
     5: [
         dict(place="Västra infarten", styrka="1", slag="Skåpbil",
              activity="Stannade en kort stund utanför infarten innan den körde vidare",
-             symbol=VAN_SYMBOL, reg_nr="QAB456",
+             symbol=VAN_SYMBOL, reg_nr=None,
              next_steps="Fortsatt uppmärksamhet vid infarten", image=IMG_VAN),
         dict(place="Skogsbrynet vid förrådet", styrka="1", slag="Person",
              activity="Fotograferade stängslet under en längre stund",
@@ -372,19 +539,25 @@ SIGNAL_EVENTS: dict[int, list[dict]] = {
     7: [
         dict(place="Bortre parkeringen", styrka="1", slag="Beväpnad person",
              activity="Siktades kortvarigt innan personen försvann in i skogen",
-             symbol="Bar vad som såg ut som ett handeldvapen", reg_nr=None,
+             symbol=(
+                 "Person 1 (A – Age: 25-35, B – Build: Kraftig, "
+                 "D – Distinguishing marks: Bar vad som såg ut som ett handeldvapen)"
+             ), reg_nr=None,
              next_steps="Polis underrättad, skärpt bevakning", image=IMG_ARMED_SINGLE),
     ],
     8: [
         dict(place="Vid transformatorstationen", styrka="1", slag="Skåpbil",
              activity="Parkerad en stund innan den körde iväg",
-             symbol=VAN_SYMBOL, reg_nr="QAB456",
+             symbol=VAN_SYMBOL, reg_nr=None,
              next_steps="Fortsatt övervakning, jämförs med tidigare observationer"),
     ],
     9: [
         dict(place="Norra skogsbrynet", styrka="2", slag="Beväpnade personer",
              activity="Avvek söderut mot allmän väg vid upptäckt",
-             symbol="En av personerna bar ett gevär", reg_nr=None,
+             symbol=(
+                 "Person 1 (A – Age: 30-40, D – Distinguishing marks: Bar ett gevär), "
+                 "Person 2 (A – Age: 20-30, D – Distinguishing marks: Ingen synlig beväpning)"
+             ), reg_nr=None,
              next_steps="Polis underrättad, förhöjd beredskap", image=IMG_ARMED_PAIR),
         dict(place="Huvudentrén", styrka="1", slag="Person",
              activity="Fotograferade kameror och belysning vid entrén",
@@ -399,7 +572,7 @@ SIGNAL_EVENTS: dict[int, list[dict]] = {
              image=IMG_BROKEN_LOCK),
         dict(place="Kajen", styrka="1", slag="Skåpbil",
              activity="Sågs lasta okänt gods innan den körde iväg",
-             symbol=VAN_SYMBOL, reg_nr="QAB456",
+             symbol=VAN_SYMBOL, reg_nr=None,
              next_steps="Polis underrättad", image=IMG_VAN),
     ],
 }
@@ -435,8 +608,18 @@ def _render_block(day: int, reporter: str, tnr: str, event: dict) -> str:
     return "\n".join(lines)
 
 
+# From day 5 onward (the recurring person/van story is in full swing by
+# then), each day gets this many *additional* person/vehicle noise
+# observations on top of the normal EVENTS_PER_DAY mix -- more raw
+# material for Personer, fordon och objekt to sift through once there's
+# an actual recurring pattern worth finding, mirroring how a real post's
+# reporting volume doesn't stay flat once something's clearly going on.
+EXTRA_PERSON_VEHICLE_COUNT = 10
+EXTRA_PERSON_VEHICLE_FROM_DAY = 5
+
+
 def generate_day(
-    day: int, rng: random.Random, guard: _NoiseClusterGuard
+    day: int, rng: random.Random, guard: _NoiseClusterGuard, used_plates: set[str]
 ) -> tuple[str, list[dict]]:
     """Returns the day's report text plus a list of {"tnr", "image"}
     entries for whichever events (always signal events, never noise) had
@@ -446,7 +629,13 @@ def generate_day(
     so a report's own TNR is what ties it back to its picture after import."""
     signal = SIGNAL_EVENTS.get(day, [])
     noise_count = EVENTS_PER_DAY - len(signal)
-    events = [_noise_event(rng, guard) for _ in range(noise_count)] + list(signal)
+    events = [_noise_event(rng, guard, used_plates) for _ in range(noise_count)]
+    if day >= EXTRA_PERSON_VEHICLE_FROM_DAY:
+        events += [
+            _noise_event(rng, guard, used_plates, category=rng.choice(["person", "vehicle"]))
+            for _ in range(EXTRA_PERSON_VEHICLE_COUNT)
+        ]
+    events += list(signal)
 
     timed = [(_rand_time(rng, day), event) for event in events]
     timed.sort(key=lambda pair: pair[0])
@@ -653,9 +842,15 @@ def main() -> None:
         for event in events:
             guard.accept(event["slag"], event["symbol"])
 
+    # Plates handed out to noise vehicles, tracked across the whole run
+    # (not per-day) so none of them ever collides with each other or with
+    # the van's own QAB456/the adjacent units' LMN234/RST789 -- see
+    # _random_plate.
+    used_plates: set[str] = set()
+
     event_images: dict[str, list[dict]] = {}
     for day in range(1, 11):
-        text, images = generate_day(day, rng, guard)
+        text, images = generate_day(day, rng, guard, used_plates)
         path = OUT_DIR / f"dag_{day:02d}.txt"
         path.write_text(text, encoding="utf-8")
         if images:

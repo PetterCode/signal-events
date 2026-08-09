@@ -15,18 +15,30 @@ from signal_events import db, importer, analysis
 
 TRAINING_DAYS_DIR = Path(__file__).resolve().parent.parent / "demo" / "training_days"
 ADJACENT_STATUS_PATH = TRAINING_DAYS_DIR / "adjacent_status.json"
-EXPECTED_REPORTS_PER_DAY = 30
+
+# Days 1-4: the original ~30 reports/day. Days 5-10: 10 more, all forced
+# to the person/vehicle noise categories (see generate_training_days.py's
+# EXTRA_PERSON_VEHICLE_COUNT/EXTRA_PERSON_VEHICLE_FROM_DAY) -- more raw
+# material for Personer, fordon och objekt once the recurring-pattern
+# story is in full swing.
+EXTRA_PERSON_VEHICLE_COUNT = 10
+EXTRA_PERSON_VEHICLE_FROM_DAY = 5
 
 
-def test_all_ten_day_files_exist_with_30_reports():
+def _expected_reports_for_day(day: int) -> int:
+    extra = EXTRA_PERSON_VEHICLE_COUNT if day >= EXTRA_PERSON_VEHICLE_FROM_DAY else 0
+    return 30 + extra
+
+
+def test_all_ten_day_files_exist_with_the_expected_report_count():
     for day in range(1, 11):
         path = TRAINING_DAYS_DIR / f"dag_{day:02d}.txt"
         assert path.exists(), f"missing {path}"
         text = path.read_text(encoding="utf-8")
         blocks = importer.split_report_blocks(text)
-        assert len(blocks) == EXPECTED_REPORTS_PER_DAY, (
-            f"dag_{day:02d}.txt has {len(blocks)} blocks, expected "
-            f"{EXPECTED_REPORTS_PER_DAY}"
+        expected = _expected_reports_for_day(day)
+        assert len(blocks) == expected, (
+            f"dag_{day:02d}.txt has {len(blocks)} blocks, expected {expected}"
         )
 
 
@@ -39,7 +51,7 @@ def test_importing_each_day_reports_zero_needs_review_failures():
         for day in range(1, 11):
             text = (TRAINING_DAYS_DIR / f"dag_{day:02d}.txt").read_text(encoding="utf-8")
             ids = importer.import_text(conn, text, filename=f"dag_{day:02d}.txt")
-            assert len(ids) == EXPECTED_REPORTS_PER_DAY
+            assert len(ids) == _expected_reports_for_day(day)
             for event_id in ids:
                 event = db.get_event(conn, event_id)
                 assert event["place"]
@@ -212,7 +224,7 @@ def test_most_but_not_all_human_reported_events_get_a_position():
                 if event["lat"] is not None and event["lon"] is not None:
                     positioned += 1
 
-    assert total == 300
+    assert total == sum(_expected_reports_for_day(day) for day in range(1, 11))
     assert positioned < total, "expected at least one human-reported event without a position"
     ratio = positioned / total
     assert 0.5 < ratio < 0.95, f"expected 'most, not all' positioned, got {positioned}/{total}"

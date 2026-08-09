@@ -29,11 +29,19 @@ since precisely that kind of freeform report is what a file import
 brings in. When the event's `object` field reads as a person sighting
 (see analysis._classify_object_type) and no composer block was found,
 its free-text description is extracted as a person entity and matched
-against existing ones by the same Jaccard token-similarity clustering
-analysis.py's now-retired recurring-list feature used for exactly this
--- not exact identity like a vehicle's plate, but the best a rule-based
-parser can do for prose with no other structural marker.
-"""
+against existing ones by Jaccard token-similarity, using the label plus
+every attribute value as the description text -- the same clustering
+approach analysis.py's now-retired recurring-list feature used. A
+composer-derived person, by contrast, is only matched against this same
+event's own previous auto-extraction (by exact label, e.g. "Person 1"),
+never across different reports: composer text is short and heavily
+templated ("A – Age: ..., B – Build: ...") -- tried against the
+cross-report similarity check at realistic volume, the shared field
+labels alone push unrelated people's Jaccard scores close enough to the
+threshold that real noise starts coincidentally merging into false
+"recurring" records, which the freeform case's fuller, more varied
+prose largely avoids. Not exact identity like a plate, but the best a
+rule-based parser can do for prose with no other structural marker."""
 
 from __future__ import annotations
 
@@ -101,8 +109,11 @@ class ParsedEntity:
         # vehicle with `registration` set always matches by plate
         # instead, regardless of this field. "similarity" -- no
         # reliable identity of its own, so match the best existing
-        # entity of the same type by Jaccard token similarity over the
-        # label text (the freeform-person fallback below).
+        # entity of the same type by Jaccard token similarity (the
+        # freeform-person fallback below) -- deliberately *not* also
+        # applied to composer-derived persons, see this module's
+        # docstring for why that turned out to be too imprecise at
+        # realistic volume.
         self.match = match
 
 
@@ -194,22 +205,22 @@ def sync_event_entities(conn: sqlite3.Connection, event_id: int) -> None:
     every time, works differently depending on what identity the parser
     found:
     - A vehicle with a registration plate is matched *globally*, across
-      every event -- same real plate, same entity.
-    - A composer-block person/vehicle with no plate has no reliable
-      cross-report identity, so it's only matched against this *same
-      event's* previous auto-extraction (by label, e.g. "Person 1") to
-      stay stable across repeated saves of one report, without
-      accidentally merging distinct people from different reports just
-      because both happened to be "Person 1" in their own report.
+      every event -- same real plate, same entity -- and its attributes
+      are merged (existing values win) rather than overwritten, so a
+      fuller description picked up from one report isn't erased by a
+      thinner mention of the same plate in another.
+    - Anything else (a person, or a vehicle with no readable plate) has
+      no reliable cross-report identity, so it's only matched against
+      this *same event's* previous auto-extraction (by label, e.g.
+      "Person 1") to stay stable across repeated saves of one report,
+      without accidentally merging distinct people from different
+      reports just because both happened to be "Person 1" in their own
+      report.
     - A freeform person (see extract_entities's fallback for reports
       with no composer block) is matched *globally* too, like a plate,
       but by Jaccard text similarity instead of exact identity -- the
       only way to recognise "probably the same person" across two
-      independently typed-up descriptions.
-    In every matched case, attributes are merged (existing values win)
-    rather than overwritten, so a fuller description picked up from one
-    report isn't erased by a thinner mention of the same entity in
-    another."""
+      independently typed-up descriptions."""
     event = db.get_event(conn, event_id)
     if event is None:
         return

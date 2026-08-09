@@ -288,7 +288,14 @@ hotbedömning" page's own recurring-person clustering uses (see "RED is
 reserved for..." below) — not exact identity like a plate, but the best
 a rule-based parser can do for prose with no other structural marker,
 and the only way a freeform-described recurring person ever gets picked
-up at all. Editing or resaving an event re-syncs its automatically-found
+up at all. Composer text deliberately isn't given the same cross-report
+matching: it's short and heavily templated (the field labels themselves
+— "A – Age:", "B – Build:", ...  — are identical on every person),
+which at realistic report volume pushes even unrelated people's
+similarity score close enough to the threshold that real, unrelated
+reports start coincidentally merging — confirmed while building the
+10-day training scenario's own composer-formatted noise. Editing or
+resaving an event re-syncs its automatically-found
 records without touching anything added by hand. Objects (a found item,
 a suspicious package, ...) have no automatic marker to key off and are
 always added manually, from the same page. Every record's own page shows

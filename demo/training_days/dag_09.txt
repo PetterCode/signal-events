@@ -1,417 +1,557 @@
 Till: Stabsassistent
-Från: Vakt Ström
-TNR: 090118
-Stund: 090118
-Ställe: Vaktkuren
-Styrka: 1
-Slag: Besiktningsbil
-Sysselsättning: Vände och körde tillbaka samma väg
-Symbol: Kort varaktighet, bedömdes som en engångsföreteelse
-Sagesman: Vakt Ström
-Sedan: Inget vidare agerande
-
----
-
-Till: Stabsassistent
-Från: Vakt Karlsson
-TNR: 090126
-Stund: 090126
-Ställe: Gångstigen längs stängslet
-Styrka: 1
-Slag: Traktor
-Sysselsättning: Passerade på allmän väg utan att stanna
-Symbol: Kort varaktighet, bedömdes som ofarligt
-Sagesman: Vakt Karlsson
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Nilsson
-TNR: 090240
-Stund: 090240
-Ställe: Bommen vid infarten (34VCL3452876732)
-Styrka: -
-Slag: Vindfälld gren
-Sysselsättning: Låg över gångvägen, forslades bort av personal
-Symbol: Försvann snabbt, bedömdes som ofarligt
-Sagesman: Vakt Nilsson
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Ekberg
-TNR: 090302
-Stund: 090302
-Ställe: Förrådsbyggnaden (34VCL3480676810)
-Styrka: 1
-Slag: Cyklist
-Sysselsättning: Rastade en stund i närheten
-Symbol: Sedd på håll, låg inom det förväntade
-Sagesman: Vakt Ekberg
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Nilsson
-TNR: 090303
-Stund: 090303
-Ställe: Förrådsbyggnaden
-Styrka: -
-Slag: Vindfälld gren
-Sysselsättning: Låg över gångvägen, forslades bort av personal
-Symbol: Ingen närmare beskrivning, noterat i fältanteckningarna
-Sagesman: Vakt Nilsson
-Sedan: Inget vidare agerande
-
----
-
-Till: Stabsassistent
-Från: Vakt Berg
-TNR: 090546
-Stund: 090546
-Ställe: Bommen vid infarten
-Styrka: 1
-Slag: Hare
-Sysselsättning: Rörde sig längs stängslet innan den försvann
-Symbol: Ingen närmare beskrivning, inget som krävde närmare kontroll
-Sagesman: Vakt Berg
-Sedan: Inget vidare agerande
-
----
-
-Till: Stabsassistent
-Från: Vakt Ekberg
-TNR: 090609
-Stund: 090609
-Ställe: Norra vägen
-Styrka: 6
-Slag: Fågelflock
-Sysselsättning: Betade en stund vid stängslet
-Symbol: Ingen ytterligare information, bedömdes som ofarligt
-Sagesman: Vakt Ekberg
-Sedan: Ingen åtgärd krävs
-
----
-
-Till: Stabsassistent
-Från: Vakt Karlsson
-TNR: 090810
-Stund: 090810
-Ställe: Förrådsbyggnaden (34VCL3480676810)
-Styrka: -
-Slag: Rutinpatrullering
-Sysselsättning: Inget avvikande att rapportera
-Symbol: Enstaka sikt, bedömdes som ofarligt
-Sagesman: Vakt Karlsson
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Ström
-TNR: 090902
-Stund: 090902
+Från: Vakt Lindqvist
+TNR: 090101
+Stund: 090101
 Ställe: Norra vägen (34VCL3471276892)
-Styrka: -
-Slag: Vindfälld gren
-Sysselsättning: Låg över gångvägen, forslades bort av personal
-Symbol: Inga särskilda kännetecken, bedömdes som en engångsföreteelse
-Sagesman: Vakt Ström
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Lindqvist
-TNR: 090918
-Stund: 090918
-Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
-Styrka: 6
-Slag: Fågelflock
-Sysselsättning: Vilade i gräset nära förrådet
-Symbol: Inga avvikelser, noterat i fältanteckningarna
+Styrka: 1
+Slag: Brevbärare
+Sysselsättning: Rastade en stund i närheten
+Symbol: Person 1 (A – Age: 60-70, B – Build: Medel, C – Colour: Ljusa kläder, D – Distinguishing marks: Hade en cykel, ärende 1756)
 Sagesman: Vakt Lindqvist
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Lindqvist
-TNR: 090929
-Stund: 090929
-Ställe: Skjutbanan (34VCL3471877014)
-Styrka: 1
-Slag: Löpare
-Sysselsättning: Fortsatte vidare utan att stanna
-Symbol: Inga särskilda kännetecken, gav inte anledning till oro
-Sagesman: Vakt Lindqvist
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Nilsson
-TNR: 091008
-Stund: 091008
-Ställe: Gångstigen längs stängslet
-Styrka: 1
-Slag: Hare
-Sysselsättning: Passerade genom området och försvann in i skogen
-Symbol: Inga avvikelser, noterat i fältanteckningarna
-Sagesman: Vakt Nilsson
 Sedan: Ingen åtgärd krävs
-
----
-
-Till: Stabsassistent
-Från: Vakt Ström
-TNR: 091021
-Stund: 091021
-Ställe: Västra infarten (34VCL3451276744)
-Styrka: 1
-Slag: Cyklist
-Sysselsättning: Passerade utanför stängslet
-Symbol: Rörde sig i buskaget, inget ovanligt i övrigt
-Sagesman: Vakt Ström
-Sedan: Ingen åtgärd krävs
-
----
-
-Till: Stabsassistent
-Från: Vakt Holm
-TNR: 091022
-Stund: 091022
-Ställe: Bommen vid infarten (34VCL3452876732)
-Styrka: 1
-Slag: Hare
-Sysselsättning: Vilade i gräset nära förrådet
-Symbol: Ingen tydlig avvikelse, bedömdes som ofarligt
-Sagesman: Vakt Holm
-Sedan: Noterat i vaktloggen
-
----
-
-Till: Stabsassistent
-Från: Vakt Karlsson
-TNR: 091032
-Stund: 091032
-Ställe: Skjutbanan (34VCL3471877014)
-Styrka: 1
-Slag: Fasan
-Sysselsättning: Passerade genom området och försvann in i skogen
-Symbol: Kort varaktighet, inget ovanligt i övrigt
-Sagesman: Vakt Karlsson
-Sedan: Noterat i vaktloggen
-
----
-
-Till: Stabsassistent
-Från: Vakt Ekberg
-TNR: 091137
-Stund: 091137
-Ställe: Norra skogsbrynet (34VCL3468076938)
-Styrka: 2
-Slag: Beväpnade personer
-Sysselsättning: Avvek söderut mot allmän väg vid upptäckt
-Symbol: En av personerna bar ett gevär
-Sagesman: Vakt Ekberg
-Sedan: Polis underrättad, förhöjd beredskap
-
----
-
-Till: Stabsassistent
-Från: Vakt Nilsson
-TNR: 091141
-Stund: 091141
-Ställe: Vaktkuren (34VCL3472076679)
-Styrka: 1
-Slag: Fiskare
-Sysselsättning: Frågade om vägbeskrivning
-Symbol: Kort varaktighet, inget ovanligt i övrigt
-Sagesman: Vakt Nilsson
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Ström
-TNR: 091213
-Stund: 091213
-Ställe: Huvudentrén (34VCL3470276669)
-Styrka: 1
-Slag: Person
-Sysselsättning: Fotograferade kameror och belysning vid entrén
-Symbol: Mörka kläder, mörk keps, mörk ryggsäck
-Sagesman: Vakt Ström
-Sedan: Bildmaterial sparat, förhöjd beredskap
-
----
-
-Till: Stabsassistent
-Från: Vakt Holm
-TNR: 091219
-Stund: 091219
-Ställe: Förrådsbyggnaden (34VCL3480676810)
-Styrka: 14
-Slag: Skolklass
-Sysselsättning: Passerade på guidad rundtur utanför stängslet
-Symbol: Ingen tydlig avvikelse, bedömdes som ofarligt
-Sagesman: Vakt Holm
-Sedan: Inget vidare agerande
-
----
-
-Till: Stabsassistent
-Från: Vakt Lindqvist
-TNR: 091236
-Stund: 091236
-Ställe: Bommen vid infarten (34VCL3452876732)
-Styrka: 1
-Slag: Traktor
-Sysselsättning: Stod kort stilla innan den körde vidare
-Symbol: Ingen närmare beskrivning, inget ovanligt i övrigt
-Sagesman: Vakt Lindqvist
-Sedan: Fortsatt bevakning enligt rutin
-
----
-
-Till: Stabsassistent
-Från: Vakt Nilsson
-TNR: 091307
-Stund: 091307
-Ställe: Gångstigen längs stängslet
-Styrka: 1
-Slag: Leveransbil
-Sysselsättning: Stod kort stilla innan den körde vidare
-Symbol: Sedd på håll, inget ovanligt i övrigt
-Sagesman: Vakt Nilsson
-Sedan: Ingen åtgärd krävs
-
----
-
-Till: Stabsassistent
-Från: Vakt Karlsson
-TNR: 091318
-Stund: 091318
-Ställe: Bortre parkeringen (34VCL3485976595)
-Styrka: 1
-Slag: Cyklist
-Sysselsättning: Fortsatte vidare utan att stanna
-Symbol: Enstaka sikt, bedömdes som en engångsföreteelse
-Sagesman: Vakt Karlsson
-Sedan: Noterat i vaktloggen
-
----
-
-Till: Stabsassistent
-Från: Vakt Holm
-TNR: 091415
-Stund: 091415
-Ställe: Skjutbanan (34VCL3471877014)
-Styrka: -
-Slag: Rutinpatrullering
-Sysselsättning: Inget avvikande att rapportera
-Symbol: Ingen ytterligare information, bedömdes som en engångsföreteelse
-Sagesman: Vakt Holm
-Sedan: Inget vidare agerande
 
 ---
 
 Till: Stabsassistent
 Från: Vakt Berg
-TNR: 091528
-Stund: 091528
-Ställe: Skogsbrynet vid förrådet (34VCL3484176841)
+TNR: 090136
+Stund: 090136
+Ställe: Bortre parkeringen
 Styrka: 1
-Slag: Renhållningsfordon
-Sysselsättning: Vände och körde tillbaka samma väg
-Symbol: Försvann snabbt, föranledde ingen ytterligare notering
+Slag: Traktor
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Fordon 1 (S – Size: Kompakt, C – Colour: Beige, R – Registration: UPJ837, I – Identifying marks: Med stenskott i vindrutan, ärende 4842, M – Model: Ford Transit)
 Sagesman: Vakt Berg
-Sedan: Ingen åtgärd krävs
+Sedan: Inget vidare agerande
 
 ---
 
 Till: Stabsassistent
-Från: Vakt Lindqvist
-TNR: 091706
-Stund: 091706
-Ställe: Bortre parkeringen (34VCL3485976595)
+Från: Vakt Holm
+TNR: 090149
+Stund: 090149
+Ställe: Skjutbanan (34VCL3471877014)
 Styrka: 1
-Slag: Cyklist
-Sysselsättning: Fortsatte vidare utan att stanna
-Symbol: Inga avvikelser, bedömdes som ofarligt
-Sagesman: Vakt Lindqvist
+Slag: Sopbil
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Fordon 1 (S – Size: Kompakt, C – Colour: Vit, R – Registration: FVZ500, I – Identifying marks: Med taklucka, ärende 8928, M – Model: Ford Transit)
+Sagesman: Vakt Holm
 Sedan: Fortsatt bevakning enligt rutin
 
 ---
 
 Till: Stabsassistent
 Från: Vakt Andersson
-TNR: 091946
-Stund: 091946
-Ställe: Sjön utanför området
-Styrka: 1
-Slag: Fasan
-Sysselsättning: Sprang tvärs över vägen
-Symbol: Sedd på håll, noterat i fältanteckningarna
+TNR: 090208
+Stund: 090208
+Ställe: Bommen vid infarten (34VCL3452876732)
+Styrka: -
+Slag: Vindfälld gren
+Sysselsättning: Låg över gångvägen, forslades bort av personal
+Symbol: Rörde sig i buskaget, bedömdes som ofarligt
 Sagesman: Vakt Andersson
-Sedan: Noterat i vaktloggen
+Sedan: Fortsatt bevakning enligt rutin
 
 ---
 
 Till: Stabsassistent
 Från: Vakt Karlsson
-TNR: 092026
-Stund: 092026
-Ställe: Kajen (34VCL3491776492)
+TNR: 090320
+Stund: 090320
+Ställe: Västra infarten (34VCL3451276744)
 Styrka: 1
-Slag: Löpare
-Sysselsättning: Fortsatte vidare utan att stanna
-Symbol: Sedd på håll, låg inom det förväntade
+Slag: Hundpromenerare
+Sysselsättning: Rastade en stund i närheten
+Symbol: Person 1 (A – Age: 18-25, B – Build: Atletisk, C – Colour: Mörka kläder, D – Distinguishing marks: Åt ett äpple, ärende 7210)
 Sagesman: Vakt Karlsson
 Sedan: Fortsatt bevakning enligt rutin
 
 ---
 
 Till: Stabsassistent
+Från: Vakt Nilsson
+TNR: 090326
+Stund: 090326
+Ställe: Förrådsbyggnaden (34VCL3480676810)
+Styrka: 1
+Slag: Postbil
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Fordon 1 (S – Size: Mellanstor, C – Colour: Vit, R – Registration: KNM426, I – Identifying marks: Omärkt, M – Model: Toyota Hilux)
+Sagesman: Vakt Nilsson
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
 Från: Vakt Holm
-TNR: 092142
-Stund: 092142
-Ställe: Vaktkuren (34VCL3472076679)
-Styrka: -
-Slag: Rutinpatrullering
-Sysselsättning: Inget avvikande att rapportera
-Symbol: Försvann snabbt, låg inom det förväntade
+TNR: 090429
+Stund: 090429
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
+Styrka: 1
+Slag: Besiktningsbil
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Fordon 1 (S – Size: Kompakt, C – Colour: Beige, R – Registration: EXV146, I – Identifying marks: Omärkt, ärende 6703, M – Model: Scania)
 Sagesman: Vakt Holm
 Sedan: Fortsatt bevakning enligt rutin
 
 ---
 
 Till: Stabsassistent
-Från: Vakt Ström
-TNR: 092234
-Stund: 092234
-Ställe: Skogsbrynet vid förrådet
+Från: Vakt Berg
+TNR: 090447
+Stund: 090447
+Ställe: Gångstigen längs stängslet
+Styrka: -
+Slag: Rutinpatrullering
+Sysselsättning: Inget avvikande att rapportera
+Symbol: Inga avvikelser, bedömdes som en engångsföreteelse
+Sagesman: Vakt Berg
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Holm
+TNR: 090456
+Stund: 090456
+Ställe: Huvudentrén (34VCL3470276669)
 Styrka: 1
-Slag: Postbil
-Sysselsättning: Stod kort stilla innan den körde vidare
-Symbol: Kort varaktighet, bedömdes som en engångsföreteelse
-Sagesman: Vakt Ström
+Slag: Sopbil
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Fordon 1 (S – Size: Mellanstor, C – Colour: Svart, R – Registration: SKN346, I – Identifying marks: Med stenskott i vindrutan, M – Model: Fiat Ducato)
+Sagesman: Vakt Holm
 Sedan: Inget vidare agerande
 
 ---
 
 Till: Stabsassistent
 Från: Vakt Nilsson
-TNR: 092308
-Stund: 092308
+TNR: 090522
+Stund: 090522
+Ställe: Kajen (34VCL3491776492)
+Styrka: 1
+Slag: Löpare
+Sysselsättning: Fortsatte vidare utan att stanna
+Symbol: Person 1 (A – Age: 30-40, B – Build: Storvuxen, C – Colour: Reflexväst, D – Distinguishing marks: Läste på en skylt, ärende 8119)
+Sagesman: Vakt Nilsson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ekberg
+TNR: 090629
+Stund: 090629
+Ställe: Förrådsbyggnaden (34VCL3480676810)
+Styrka: 1
+Slag: Fiskare
+Sysselsättning: Fortsatte vidare utan att stanna
+Symbol: Person 1 (A – Age: 60-70, B – Build: Medel, C – Colour: Kostym, D – Distinguishing marks: Hade en hund, ärende 9954)
+Sagesman: Vakt Ekberg
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 090708
+Stund: 090708
+Ställe: Östra grinden
+Styrka: 1
+Slag: Ekorre
+Sysselsättning: Sprang tvärs över vägen
+Symbol: Kort varaktighet, krävde ingen vidare uppföljning
+Sagesman: Vakt Andersson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 090815
+Stund: 090815
+Ställe: Norra vägen (34VCL3471276892)
+Styrka: -
+Slag: Rutinpatrullering
+Sysselsättning: Inget avvikande att rapportera
+Symbol: Rörde sig i buskaget, bedömdes som ofarligt
+Sagesman: Vakt Andersson
+Sedan: Inget vidare agerande
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ekberg
+TNR: 090829
+Stund: 090829
+Ställe: Östra grinden (34VCL3489476739)
+Styrka: 1
+Slag: Besiktningsbil
+Sysselsättning: Vände och körde tillbaka samma väg
+Symbol: Fordon 1 (S – Size: Liten, C – Colour: Grå, R – Registration: MLY253, I – Identifying marks: Med reklamdekal, ärende 2843, M – Model: Volkswagen Transporter)
+Sagesman: Vakt Ekberg
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 090850
+Stund: 090850
+Ställe: Gångstigen längs stängslet
+Styrka: -
+Slag: Väderobservation
+Sysselsättning: Nedsatt sikt på grund av dimma
+Symbol: Vanligt utseende, inget ovanligt i övrigt
+Sagesman: Vakt Andersson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 091002
+Stund: 091002
+Ställe: Förrådsbyggnaden (34VCL3480676810)
+Styrka: 14
+Slag: Skolklass
+Sysselsättning: Passerade på guidad rundtur utanför stängslet
+Symbol: Ingen närmare beskrivning, noterat i fältanteckningarna (logg 5470)
+Sagesman: Vakt Lindqvist
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ekberg
+TNR: 091008
+Stund: 091008
+Ställe: Kajen
+Styrka: 1
+Slag: Fiskare
+Sysselsättning: Frågade om vägbeskrivning
+Symbol: Person 1 (A – Age: 40-50, B – Build: Storvuxen, C – Colour: Mörka kläder, D – Distinguishing marks: Inga särskilda kännetecken, ärende 4079)
+Sagesman: Vakt Ekberg
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ekberg
+TNR: 091140
+Stund: 091140
+Ställe: Västra infarten
+Styrka: 1
+Slag: Ekorre
+Sysselsättning: Rörde sig längs stängslet innan den försvann
+Symbol: Inga avvikelser, bedömdes som ofarligt
+Sagesman: Vakt Ekberg
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 091211
+Stund: 091211
+Ställe: Sjön utanför området
+Styrka: 1
+Slag: Postbil
+Sysselsättning: Vände och körde tillbaka samma väg
+Symbol: Fordon 1 (S – Size: Kompakt, C – Colour: Silver, R – Registration: BSU063, I – Identifying marks: Omärkt, M – Model: Mercedes Sprinter)
+Sagesman: Vakt Karlsson
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ström
+TNR: 091224
+Stund: 091224
+Ställe: Sjön utanför området
+Styrka: 14
+Slag: Skolklass
+Sysselsättning: Passerade på guidad rundtur utanför stängslet
+Symbol: Vanligt utseende, noterat i fältanteckningarna
+Sagesman: Vakt Ström
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 091253
+Stund: 091253
+Ställe: Parkeringen vid huvudbyggnaden
+Styrka: -
+Slag: Rutinpatrullering
+Sysselsättning: Inget avvikande att rapportera
+Symbol: Ingen närmare beskrivning, avvek inte från vad som är brukligt
+Sagesman: Vakt Andersson
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 091405
+Stund: 091405
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
+Styrka: 1
+Slag: Renhållningsfordon
+Sysselsättning: Vände och körde tillbaka samma väg
+Symbol: Fordon 1 (S – Size: Kompakt, C – Colour: Gul, R – Registration: RVV522, I – Identifying marks: Inga särskilda kännetecken, M – Model: Renault Master)
+Sagesman: Vakt Lindqvist
+Sedan: Inget vidare agerande
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 091414
+Stund: 091414
+Ställe: Bommen vid infarten (34VCL3452876732)
+Styrka: 14
+Slag: Skolklass
+Sysselsättning: Passerade på guidad rundtur utanför stängslet
+Symbol: Ingen ytterligare information, låg inom det förväntade
+Sagesman: Vakt Karlsson
+Sedan: Inget vidare agerande
+
+---
+
+Till: Stabsassistent
+Från: Vakt Holm
+TNR: 091419
+Stund: 091419
+Ställe: Vaktkuren (34VCL3472076679)
+Styrka: 1
+Slag: Katt
+Sysselsättning: Sprang tvärs över vägen
+Symbol: Sedd på håll, inget som krävde närmare kontroll
+Sagesman: Vakt Holm
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 091522
+Stund: 091522
+Ställe: Förrådsbyggnaden (34VCL3480676810)
+Styrka: 1
+Slag: Löpare
+Sysselsättning: Fortsatte vidare utan att stanna
+Symbol: Person 1 (A – Age: 50-60, B – Build: Kraftig, C – Colour: Kostym, D – Distinguishing marks: Bar en termos, ärende 3589)
+Sagesman: Vakt Karlsson
+Sedan: Inget vidare agerande
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 091722
+Stund: 091722
+Ställe: Vaktkuren (34VCL3472076679)
+Styrka: 1
+Slag: Servicebil
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Fordon 1 (S – Size: Stor, C – Colour: Grå, R – Registration: CSX515, I – Identifying marks: Med bolagsnamn på dörren, ärende 5930, M – Model: Ford Transit)
+Sagesman: Vakt Karlsson
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Holm
+TNR: 091803
+Stund: 091803
+Ställe: Kajen (34VCL3491776492)
+Styrka: 1
+Slag: Besiktningsbil
+Sysselsättning: Stod kort stilla innan den körde vidare
+Symbol: Fordon 1 (S – Size: Liten, C – Colour: Grön, R – Registration: KVE610, I – Identifying marks: Med bucklor, ärende 9769, M – Model: Scania)
+Sagesman: Vakt Holm
+Sedan: Inget vidare agerande
+
+---
+
+Till: Stabsassistent
+Från: Vakt Ekberg
+TNR: 091823
+Stund: 091823
+Ställe: Östra grinden (34VCL3489476739)
+Styrka: 1
+Slag: Sopbil
+Sysselsättning: Passerade på allmän väg utan att stanna
+Symbol: Fordon 1 (S – Size: Skåpformad, C – Colour: Vit, R – Registration: XDF349, I – Identifying marks: Med bolagsnamn på dörren, ärende 2058, M – Model: Volkswagen Transporter)
+Sagesman: Vakt Ekberg
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 091949
+Stund: 091949
+Ställe: Huvudentrén (34VCL3470276669)
+Styrka: 1
+Slag: Person
+Sysselsättning: Fotograferade kameror och belysning vid entrén
+Symbol: Mörka kläder, mörk keps, mörk ryggsäck
+Sagesman: Vakt Karlsson
+Sedan: Bildmaterial sparat, förhöjd beredskap
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 092002
+Stund: 092002
+Ställe: Östra grinden (34VCL3489476739)
+Styrka: 1
+Slag: Brevbärare
+Sysselsättning: Rastade en stund i närheten
+Symbol: Person 1 (A – Age: 60-70, B – Build: Kortvuxen, C – Colour: Reflexväst, D – Distinguishing marks: Bar en väska, ärende 1125)
+Sagesman: Vakt Karlsson
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Berg
+TNR: 092013
+Stund: 092013
 Ställe: Vaktkuren
 Styrka: 1
 Slag: Cyklist
-Sysselsättning: Rastade en stund i närheten
-Symbol: Vanligt utseende, bedömdes som en engångsföreteelse
+Sysselsättning: Fortsatte vidare utan att stanna
+Symbol: Person 1 (A – Age: 50-60, B – Build: Kraftig, C – Colour: Mörka kläder, D – Distinguishing marks: Bar en ryggsäck, ärende 9542)
+Sagesman: Vakt Berg
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Andersson
+TNR: 092111
+Stund: 092111
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
+Styrka: 1
+Slag: Löpare
+Sysselsättning: Fortsatte vidare utan att stanna
+Symbol: Person 1 (A – Age: 20-30, B – Build: Kortvuxen, C – Colour: Vardagskläder, D – Distinguishing marks: Bar en ryggsäck, ärende 4270)
+Sagesman: Vakt Andersson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Berg
+TNR: 092118
+Stund: 092118
+Ställe: Bortre parkeringen
+Styrka: -
+Slag: Vindfälld gren
+Sysselsättning: Låg över gångvägen, forslades bort av personal
+Symbol: Inga särskilda kännetecken, låg inom det förväntade
+Sagesman: Vakt Berg
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 092138
+Stund: 092138
+Ställe: Huvudentrén (34VCL3470276669)
+Styrka: 1
+Slag: Cyklist
+Sysselsättning: Passerade utanför stängslet
+Symbol: Person 1 (A – Age: 50-60, B – Build: Atletisk, C – Colour: Sportkläder, D – Distinguishing marks: Hade en hund, ärende 5415)
+Sagesman: Vakt Lindqvist
+Sedan: Fortsatt bevakning enligt rutin
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 092223
+Stund: 092223
+Ställe: Skjutbanan (34VCL3471877014)
+Styrka: 1
+Slag: Renhållningsfordon
+Sysselsättning: Levererade gods vid förrådet
+Symbol: Fordon 1 (S – Size: Stor, C – Colour: Beige, R – Registration: HNY613, I – Identifying marks: Inga särskilda kännetecken, ärende 4006, M – Model: Toyota Hilux)
+Sagesman: Vakt Karlsson
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Nilsson
+TNR: 092228
+Stund: 092228
+Ställe: Östra grinden (34VCL3489476739)
+Styrka: 1
+Slag: Ekorre
+Sysselsättning: Rörde sig längs stängslet innan den försvann
+Symbol: Vanligt utseende, bedömdes som ofarligt
 Sagesman: Vakt Nilsson
-Sedan: Inget vidare agerande
+Sedan: Noterat i vaktloggen
+
+---
+
+Till: Stabsassistent
+Från: Vakt Lindqvist
+TNR: 092231
+Stund: 092231
+Ställe: Förrådsbyggnaden (34VCL3480676810)
+Styrka: 1
+Slag: Fiskare
+Sysselsättning: Frågade om vägbeskrivning
+Symbol: Person 1 (A – Age: 50-60, B – Build: Kraftig, C – Colour: Mörka kläder, D – Distinguishing marks: Bar en ryggsäck, ärende 7672)
+Sagesman: Vakt Lindqvist
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Karlsson
+TNR: 092300
+Stund: 092300
+Ställe: Parkeringen vid huvudbyggnaden (34VCL3468176703)
+Styrka: 1
+Slag: Sopbil
+Sysselsättning: Utförde planerat underhållsarbete
+Symbol: Fordon 1 (S – Size: Kompakt, C – Colour: Blå, R – Registration: NUR235, I – Identifying marks: Omärkt, M – Model: Volvo)
+Sagesman: Vakt Karlsson
+Sedan: Ingen åtgärd krävs
+
+---
+
+Till: Stabsassistent
+Från: Vakt Berg
+TNR: 092311
+Stund: 092311
+Ställe: Norra skogsbrynet (34VCL3468076938)
+Styrka: 2
+Slag: Beväpnade personer
+Sysselsättning: Avvek söderut mot allmän väg vid upptäckt
+Symbol: Person 1 (A – Age: 30-40, D – Distinguishing marks: Bar ett gevär), Person 2 (A – Age: 20-30, D – Distinguishing marks: Ingen synlig beväpning)
+Sagesman: Vakt Berg
+Sedan: Polis underrättad, förhöjd beredskap
+
+---
+
+Till: Stabsassistent
+Från: Vakt Nilsson
+TNR: 092329
+Stund: 092329
+Ställe: Huvudentrén (34VCL3470276669)
+Styrka: 1
+Slag: Löpare
+Sysselsättning: Frågade om vägbeskrivning
+Symbol: Person 1 (A – Age: 60-70, B – Build: Kraftig, C – Colour: Regnkläder, D – Distinguishing marks: Åt ett äpple, ärende 5379)
+Sagesman: Vakt Nilsson
+Sedan: Ingen åtgärd krävs
