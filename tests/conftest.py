@@ -8,5 +8,6 @@ def isolated_data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "events.db")
     monkeypatch.setattr(config, "ATTACHMENTS_DIR", tmp_path / "attachments")
     monkeypatch.setattr(config, "TILE_CACHE_DIR", tmp_path / "tiles")
+    monkeypatch.setattr(config, "REPORTS_DIR", tmp_path / "reports")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     db.init_db()

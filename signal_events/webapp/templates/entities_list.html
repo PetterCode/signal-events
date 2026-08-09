@@ -13,11 +13,33 @@
     <form method="post" action="{{ url_for('events.entities_send_watchlist') }}" style="display:inline">
       <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Skicka bevakningslista</button>
     </form>
+    <form method="post" action="{{ url_for('events.entities_save_watchlist') }}" style="display:inline">
+      <input type="hidden" name="format" value="text">
+      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Spara som text</button>
+    </form>
+    <form method="post" action="{{ url_for('events.entities_save_watchlist') }}" style="display:inline">
+      <input type="hidden" name="format" value="pdf">
+      <button type="submit" class="btn-secondary" style="border:none;cursor:pointer">Spara som PDF</button>
+    </form>
   </p>
   <p style="font-size:0.8rem;color:#666;margin-top:-0.5rem">
     Bevakningslistan innehåller alla poster länkade till 2 eller fler
     händelser, plus alla manuellt bevakade (kryssrutan "Bevaka" nedan) —
-    skickas till <strong>{{ recurring_group_name }}</strong>.
+    skickas till <strong>{{ recurring_group_name }}</strong>. "Spara"
+    sparar en kopia i den konfigurerade rapportmappen (se Inställningar)
+    utöver den vanliga nedladdningen.
+  </p>
+
+  <form method="post" action="{{ url_for('events.entities_import_watchlist') }}"
+        enctype="multipart/form-data" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:1rem">
+    <label for="watchlist_file" style="margin:0">Importera bevakningslista</label>
+    <input type="file" id="watchlist_file" name="file" accept=".md,.txt,text/markdown,text/plain" required>
+    <button type="submit" class="btn-secondary">Importera</button>
+  </form>
+  <p style="font-size:0.8rem;color:#666;margin-top:-0.5rem">
+    Läser in en tidigare sparad/skickad bevakningslista (Markdown) från en
+    annan enhet och skapar/uppdaterar poster härifrån — samtliga importerade
+    poster märks automatiskt som bevakade.
   </p>
 
   <div class="filters">

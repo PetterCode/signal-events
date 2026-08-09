@@ -202,6 +202,25 @@ def test_map_tile_mode_defaults_to_online():
         assert db.get_map_tile_mode(conn) == db.MAP_TILE_MODE_ONLINE
 
 
+def test_reports_dir_defaults_to_the_config_default():
+    with db.get_connection() as conn:
+        assert db.get_reports_dir(conn) == config.REPORTS_DIR
+
+
+def test_set_and_get_reports_dir_overrides_the_default(tmp_path):
+    custom = tmp_path / "custom-reports"
+    with db.get_connection() as conn:
+        db.set_reports_dir(conn, f"  {custom}  ")
+        assert db.get_reports_dir(conn) == custom
+
+
+def test_clear_reports_dir_reverts_to_the_config_default(tmp_path):
+    with db.get_connection() as conn:
+        db.set_reports_dir(conn, str(tmp_path / "custom-reports"))
+        db.clear_reports_dir(conn)
+        assert db.get_reports_dir(conn) == config.REPORTS_DIR
+
+
 def test_set_and_get_map_tile_mode_round_trips():
     with db.get_connection() as conn:
         db.set_map_tile_mode(conn, db.MAP_TILE_MODE_LOCAL)

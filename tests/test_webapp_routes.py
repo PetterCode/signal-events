@@ -2480,6 +2480,145 @@ def test_set_entity_watchlist_route_toggles_the_flag_and_redirects_to_the_same_f
         assert db_module.get_entity(conn, entity_id)["watchlist"] == 0
 
 
+def test_save_reports_dir_route_persists_a_custom_folder(tmp_path):
+    client = create_app().test_client()
+    custom = tmp_path / "arkiv"
+    resp = client.post("/settings/reports-dir", data={"reports_dir": str(custom)}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_reports_dir(conn) == custom
+    assert custom.exists()  # created eagerly so the setting page can show it as usable
+
+
+def test_save_reports_dir_route_with_empty_value_reverts_to_the_default(tmp_path):
+    client = create_app().test_client()
+    client.post("/settings/reports-dir", data={"reports_dir": str(tmp_path / "arkiv")})
+
+    resp = client.post("/settings/reports-dir", data={"reports_dir": ""}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_reports_dir(conn) == config.REPORTS_DIR
+
+
+def test_settings_page_enhet_group_shows_the_configured_reports_dir():
+    resp = create_app().test_client().get("/settings")
+    body = resp.data.decode("utf-8")
+    enhet_section = body[body.index('id="settings-enhet"'):body.index("</details>", body.index('id="settings-enhet"'))]
+    assert 'name="reports_dir"' in enhet_section
+    assert str(config.REPORTS_DIR) in enhet_section
+
+
+def test_summary_save_pdf_also_writes_a_copy_to_the_configured_reports_dir(tmp_path):
+    """Task #175's dual save+download behavior: every generated report is
+    persisted under the Rapportmapp on top of the normal browser
+    download -- this app runs on the user's own laptop, so keeping a
+    predictable local archive is meaningful in a way it wouldn't be for
+    a hosted service."""
+    custom = tmp_path / "arkiv"
+    client = create_app().test_client()
+    client.post("/settings/reports-dir", data={"reports_dir": str(custom)})
+
+    resp = client.post(
+        "/summary/save-pdf", data={"since": "7d", "narrative_text": "Lägestext."},
+    )
+    assert resp.status_code == 200
+
+    saved_files = list(custom.iterdir())
+    assert len(saved_files) == 1
+    assert saved_files[0].read_bytes() == resp.data
+
+
+def test_entities_save_watchlist_writes_to_reports_dir_and_streams_the_same_bytes(tmp_path):
+    custom = tmp_path / "arkiv"
+    client = create_app().test_client()
+    client.post("/settings/reports-dir", data={"reports_dir": str(custom)})
+    client.post("/entities/new", data={"entity_type": "person", "label": "Bevakad person"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+        db_module.update_entity(conn, entity_id, {"watchlist": True})
+
+    resp = client.post("/entities/save-watchlist", data={"format": "text"})
+
+    assert resp.status_code == 200
+    assert "_bevakningslista.md" in resp.headers.get("Content-Disposition", "")
+    assert b"Bevakad person" in resp.data
+    saved_files = list(custom.iterdir())
+    assert len(saved_files) == 1
+    assert saved_files[0].read_bytes() == resp.data
+
+
+def test_entities_save_watchlist_pdf_format_streams_valid_pdf_bytes():
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "person", "label": "Bevakad person"})
+    with db_module.get_connection() as conn:
+        entity_id = db_module.list_entities(conn)[0]["id"]
+        db_module.update_entity(conn, entity_id, {"watchlist": True})
+
+    resp = client.post("/entities/save-watchlist", data={"format": "pdf"})
+
+    assert resp.status_code == 200
+    assert "_bevakningslista.pdf" in resp.headers.get("Content-Disposition", "")
+    assert resp.data.startswith(b"%PDF")
+
+
+def test_entities_save_watchlist_with_nothing_to_save_flashes_an_error():
+    client = create_app().test_client()
+    resp = client.post("/entities/save-watchlist", data={"format": "text"}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "Inga poster på bevakningslistan att spara".encode() in resp.data
+
+
+def test_entities_import_watchlist_creates_entities_and_flashes_a_summary():
+    client = create_app().test_client()
+    markdown = (
+        "## Fordon\n"
+        "### Fordon 1 (2 händelser)\n"
+        "- Reg.nr: ABC123, Colour: Svart\n"
+        "## Personer\n"
+        "## Objekt\n"
+    )
+    upload = (io.BytesIO(markdown.encode("utf-8")), "bevakningslista.md")
+
+    resp = client.post(
+        "/entities/import-watchlist", data={"file": upload},
+        content_type="multipart/form-data", follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert "Importerade 1 poster".encode() in resp.data
+    with db_module.get_connection() as conn:
+        rows = db_module.list_entities(conn, entity_type="vehicle")
+    assert len(rows) == 1
+    assert rows[0]["registration"] == "ABC123"
+    assert rows[0]["watchlist"] == 1
+
+
+def test_entities_import_watchlist_with_no_file_flashes_an_error():
+    client = create_app().test_client()
+    resp = client.post(
+        "/entities/import-watchlist", data={}, content_type="multipart/form-data", follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert "Välj en bevakningslista-fil".encode() in resp.data
+
+
+def test_entities_import_watchlist_with_unparsable_content_flashes_an_error():
+    client = create_app().test_client()
+    upload = (io.BytesIO(b"Not a bevakningslista at all."), "notes.txt")
+
+    resp = client.post(
+        "/entities/import-watchlist", data={"file": upload},
+        content_type="multipart/form-data", follow_redirects=True,
+    )
+
+    assert resp.status_code == 200
+    assert "Inga poster hittades i filen".encode() in resp.data
+
+
 def test_entity_detail_post_saves_the_watchlist_checkbox():
     client = create_app().test_client()
     client.post("/entities/new", data={"entity_type": "person", "label": "Okänd"})

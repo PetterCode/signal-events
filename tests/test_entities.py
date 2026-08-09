@@ -441,3 +441,134 @@ def test_reset_all_clears_every_entity_including_manual_ones():
         db.reset_all(conn)
 
         assert db.list_entities(conn) == []
+
+
+# --- parse_watchlist_markdown / import_watchlist_entries -------------------
+
+def _fake_watchlist_entries(conn):
+    from signal_events.reports import generator  # noqa: F401  (avoids a cycle at module load)
+
+    vehicle_id = db.insert_entity(
+        conn, entity_type="vehicle", label="Fordon 1", registration="ABC123",
+        attributes={"Registration": "ABC 123", "Colour": "Svart"}, source="auto",
+    )
+    person_id = db.insert_entity(
+        conn, entity_type="person", label="Civil, grön jacka",
+        attributes={"Colour": "grön jacka"}, source="manual",
+    )
+    db.update_entity(conn, person_id, {"watchlist": True})
+    vehicle = conn.execute("SELECT *, 2 AS event_count FROM entities WHERE id = ?", (vehicle_id,)).fetchone()
+    person = conn.execute("SELECT *, 1 AS event_count FROM entities WHERE id = ?", (person_id,)).fetchone()
+
+    event_row = {"id": 1, "created_at": "2026-01-01T10:00:00", "event_time": "10:00", "place": "Norra grinden"}
+    return [
+        {"entity": vehicle, "events": [event_row]},
+        {"entity": person, "events": []},
+    ]
+
+
+def test_parse_watchlist_markdown_recovers_type_label_registration_and_attributes():
+    from signal_events.reports import generator
+
+    with db.get_connection() as conn:
+        markdown = generator.render_watchlist_markdown(_fake_watchlist_entries(conn), site_name="Kvarn")
+
+    parsed = entities.parse_watchlist_markdown(markdown)
+
+    vehicle = next(e for e in parsed if e.entity_type == "vehicle")
+    assert vehicle.label == "Fordon 1"
+    assert vehicle.registration == "ABC123"
+    assert vehicle.attributes.get("Colour") == "Svart"
+    assert vehicle.watchlist is False
+
+    person = next(e for e in parsed if e.entity_type == "person")
+    assert person.label == "Civil, grön jacka"
+    assert person.attributes.get("Colour") == "grön jacka"
+    assert person.watchlist is True  # manually bevakad in the export
+
+
+def test_parse_watchlist_markdown_ignores_indented_event_lines():
+    markdown = (
+        "## Fordon\n"
+        "### Fordon 1 (2 händelser)\n"
+        "- Reg.nr: ABC123\n"
+        "  - Händelse 011000 — Norra grinden\n"
+    )
+    parsed = entities.parse_watchlist_markdown(markdown)
+    assert len(parsed) == 1
+    assert parsed[0].registration == "ABC123"
+
+
+def test_parse_watchlist_markdown_returns_empty_list_for_unrelated_text():
+    assert entities.parse_watchlist_markdown("Not a bevakningslista at all.") == []
+
+
+def test_import_watchlist_entries_creates_new_entities_with_watchlist_flag_set():
+    entry = entities.ImportedWatchlistEntry(
+        entity_type="vehicle", label="Fordon 1", attributes={"Colour": "Svart"},
+        registration="ABC123", notes=None, watchlist=False,
+    )
+    with db.get_connection() as conn:
+        created, updated = entities.import_watchlist_entries(conn, [entry])
+        assert (created, updated) == (1, 0)
+
+        rows = db.list_entities(conn, entity_type="vehicle")
+        assert len(rows) == 1
+        assert rows[0]["label"] == "Fordon 1"
+        assert bool(rows[0]["watchlist"]) is True
+
+
+def test_import_watchlist_entries_dedupes_vehicle_by_plate_and_merges_attributes():
+    with db.get_connection() as conn:
+        existing_id = db.insert_entity(
+            conn, entity_type="vehicle", label="Fordon 1", registration="ABC123",
+            attributes={"Colour": "Svart"}, source="auto",
+        )
+        entry = entities.ImportedWatchlistEntry(
+            entity_type="vehicle", label="Fordon 1 (annan enhet)", attributes={"Model": "Volvo"},
+            registration="ABC123", notes=None, watchlist=False,
+        )
+
+        created, updated = entities.import_watchlist_entries(conn, [entry])
+        assert (created, updated) == (0, 1)
+
+        row = db.get_entity(conn, existing_id)
+        attrs = json.loads(row["attributes"])
+        assert attrs == {"Colour": "Svart", "Model": "Volvo"}
+        assert bool(row["watchlist"]) is True
+
+
+def test_import_watchlist_entries_dedupes_person_by_exact_label():
+    with db.get_connection() as conn:
+        existing_id = db.insert_entity(conn, entity_type="person", label="Civil, grön jacka", source="manual")
+        entry = entities.ImportedWatchlistEntry(
+            entity_type="person", label="Civil, grön jacka", attributes={},
+            registration=None, notes="Sedd igen", watchlist=False,
+        )
+
+        created, updated = entities.import_watchlist_entries(conn, [entry])
+        assert (created, updated) == (0, 1)
+        assert db.get_entity(conn, existing_id)["notes"] == "Sedd igen"
+
+
+def test_import_watchlist_markdown_round_trip_via_generator():
+    """Exports a bevakningslista (from a couple of pre-existing entities,
+    one not yet manually watchlisted), parses that export back, and
+    imports it into the *same* database (there's only one isolated DB
+    per test, so this stands in for "another unit's copy") -- since both
+    entities already exist here by plate/label, the import must be
+    recognized as updates, not duplicate creates, and both must end up
+    watchlist=True regardless of their pre-import flag state."""
+    from signal_events.reports import generator
+
+    with db.get_connection() as conn:
+        markdown = generator.render_watchlist_markdown(_fake_watchlist_entries(conn), site_name="Kvarn")
+
+    parsed = entities.parse_watchlist_markdown(markdown)
+    with db.get_connection() as conn:
+        created, updated = entities.import_watchlist_entries(conn, parsed)
+        assert (created, updated) == (0, 2)
+
+        rows = db.list_watchlist_entities(conn)
+        assert len(rows) == 2
+        assert all(bool(row["watchlist"]) for row in rows)

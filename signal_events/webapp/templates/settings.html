@@ -82,6 +82,32 @@
       </div>
 
       <div class="settings-subsection">
+        <h4>Rapportmapp</h4>
+        <p style="font-size:0.85rem;color:#666">
+          Varje genererad rapport (hotbedömning, händelserapport,
+          bevakningslista) sparas här på disk utöver webbläsarens vanliga
+          nedladdning, eftersom appen körs på din egen dator &mdash; ett
+          fast, förutsägbart arkiv istället för att förlita sig på
+          webbläsarens nedladdningsmapp.
+        </p>
+        <form method="post" action="{{ url_for('events.save_reports_dir') }}">
+          <label for="reports_dir">Rapportmapp</label>
+          <input type="text" id="reports_dir" name="reports_dir"
+                 value="{{ '' if reports_dir_is_default else reports_dir }}"
+                 placeholder="{{ reports_dir }}">
+
+          <div class="actions">
+            <button type="submit">Spara rapportmapp</button>
+          </div>
+        </form>
+        <p class="map-hint">
+          Använder just nu: <span class="mono">{{ reports_dir }}</span>
+          {% if reports_dir_is_default %}(standardval){% endif %}.
+          Lämna fältet tomt och spara för att återställa till standardvalet.
+        </p>
+      </div>
+
+      <div class="settings-subsection">
         <h4>Angränsande enheter</h4>
         <p style="font-size:0.85rem;color:#666">
           Namn på angränsande enheter, för referens på sammanställd

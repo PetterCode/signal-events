@@ -9,6 +9,7 @@ import sqlite3
 import urllib.parse
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -167,6 +168,12 @@ CREATE INDEX IF NOT EXISTS idx_entity_event_links_event_id ON entity_event_links
 # via the web UI's Inställningar page, unlike everything in config.py
 # which is env-var only. Used in generated report filenames.
 UNIT_NAME_KEY = "unit_name"
+
+# Key for a user-chosen folder every generated report (hotbedömning,
+# händelserapport, bevakningslista) is written to on top of the browser's
+# own download -- see webapp/routes.py's _write_report_to_reports_dir.
+# Falls back to config.REPORTS_DIR when unset.
+REPORTS_DIR_KEY = "reports_dir"
 
 # Key used in the `settings` table for when a report (incident report or
 # threat-level summary) was last successfully sent via Signal to the
@@ -744,6 +751,19 @@ def set_unit_name(conn: sqlite3.Connection, value: str) -> None:
     set_setting(conn, UNIT_NAME_KEY, value.strip())
 
 
+def get_reports_dir(conn: sqlite3.Connection) -> Path:
+    value = get_setting(conn, REPORTS_DIR_KEY)
+    return Path(value).expanduser() if value else config.REPORTS_DIR
+
+
+def set_reports_dir(conn: sqlite3.Connection, value: str) -> None:
+    set_setting(conn, REPORTS_DIR_KEY, value.strip())
+
+
+def clear_reports_dir(conn: sqlite3.Connection) -> None:
+    conn.execute("DELETE FROM settings WHERE key = ?", (REPORTS_DIR_KEY,))
+
+
 def get_watch_group_name(conn: sqlite3.Connection) -> str:
     return get_setting(conn, WATCH_GROUP_NAME_KEY) or config.WATCH_GROUP_NAME
 
@@ -1208,16 +1228,17 @@ def insert_entity(
     attributes: Optional[dict] = None,
     notes: Optional[str] = None,
     source: str = "manual",
+    watchlist: bool = False,
 ) -> int:
     ts = now_iso()
     cur = conn.execute(
         """INSERT INTO entities
-           (entity_type, label, registration, attributes, notes, source, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           (entity_type, label, registration, attributes, notes, source, watchlist, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             entity_type, label, registration,
             json.dumps(attributes) if attributes else None,
-            notes, source, ts, ts,
+            notes, source, 1 if watchlist else 0, ts, ts,
         ),
     )
     return cur.lastrowid

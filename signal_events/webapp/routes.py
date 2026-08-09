@@ -65,6 +65,7 @@ _ADMIN_ONLY_ENDPOINTS = {
     "events.save_map_center",
     "events.clear_map_center",
     "events.save_map_tile_url",
+    "events.save_reports_dir",
     "events.save_map_tile_mode",
     "events.save_map_tile_source",
     "events.save_map_cache_area_size",
@@ -391,6 +392,7 @@ def settings():
             flash("Enhetsnamn sparat.")
             return redirect(url_for("events.settings"))
         unit_name = db.get_unit_name(conn)
+        reports_dir = db.get_reports_dir(conn)
         adjacent_units = db.list_adjacent_units(conn)
         watch_group = db.get_watch_group_name(conn)
         report_group = db.get_report_group_name(conn)
@@ -421,6 +423,7 @@ def settings():
     )
     return render_template(
         "settings.html", unit_name=unit_name, example_filename=example_filename,
+        reports_dir=str(reports_dir), reports_dir_is_default=reports_dir == config.REPORTS_DIR,
         adjacent_units=adjacent_units, watch_group=watch_group,
         report_group=report_group, recurring_group=recurring_group,
         sensor_group=sensor_group, ollama_port=ollama_port, users=users,
@@ -560,6 +563,28 @@ def save_map_tile_url():
         with db.get_connection() as conn:
             db.set_map_tile_url_template(conn, url_template)
         flash("Kartleverantör sparad.")
+    return redirect(url_for("events.settings"))
+
+
+@bp.route("/settings/reports-dir", methods=["POST"])
+def save_reports_dir():
+    reports_dir = request.form.get("reports_dir", "").strip()
+    if not reports_dir:
+        with db.get_connection() as conn:
+            db.clear_reports_dir(conn)
+        flash(f"Rapportmapp återställd till standard ({config.REPORTS_DIR}).")
+        return redirect(url_for("events.settings"))
+
+    path = Path(reports_dir).expanduser()
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        flash(f"Kunde inte skapa/använda mappen {path}: {exc}", "error")
+        return redirect(url_for("events.settings"))
+
+    with db.get_connection() as conn:
+        db.set_reports_dir(conn, str(path))
+    flash(f"Rapportmapp sparad ({path}).")
     return redirect(url_for("events.settings"))
 
 
@@ -1647,25 +1672,38 @@ def report():
 
     unit_name = _unit_name()
     if fmt == "markdown":
-        content = generator.render_markdown(rows, since_label=preset)
-        buf = io.BytesIO(content.encode("utf-8"))
-        return send_file(
-            buf, mimetype="text/markdown", as_attachment=True,
-            download_name=naming.build_report_filename(unit_name, "handelserapport", "md"),
-        )
-    if fmt == "text":
-        content = generator.render_text(rows, since_label=preset)
-        buf = io.BytesIO(content.encode("utf-8"))
-        return send_file(
-            buf, mimetype="text/plain", as_attachment=True,
-            download_name=naming.build_report_filename(unit_name, "handelserapport", "txt"),
-        )
+        content_bytes = generator.render_markdown(rows, since_label=preset).encode("utf-8")
+        mimetype = "text/markdown"
+        filename = naming.build_report_filename(unit_name, "handelserapport", "md")
+    elif fmt == "text":
+        content_bytes = generator.render_text(rows, since_label=preset).encode("utf-8")
+        mimetype = "text/plain"
+        filename = naming.build_report_filename(unit_name, "handelserapport", "txt")
+    else:
+        content_bytes = generator.render_pdf(rows, since_label=preset).read()
+        mimetype = "application/pdf"
+        filename = naming.build_report_filename(unit_name, "handelserapport", "pdf")
 
-    buf = generator.render_pdf(rows, since_label=preset)
+    with db.get_connection() as conn:
+        _write_report_to_reports_dir(conn, content_bytes, filename)
     return send_file(
-        buf, mimetype="application/pdf", as_attachment=True,
-        download_name=naming.build_report_filename(unit_name, "handelserapport", "pdf"),
+        io.BytesIO(content_bytes), mimetype=mimetype, as_attachment=True, download_name=filename,
     )
+
+
+def _write_report_to_reports_dir(conn, content: bytes, filename: str) -> Path:
+    """Persists a copy of every generated report (hotbedömning,
+    händelserapport, bevakningslista) to the Inställningar-configured
+    Rapportmapp (see db.get_reports_dir), alongside whatever the caller
+    still does with the same bytes (typically also streaming it back as
+    a browser download) -- this app runs on the user's own laptop, so
+    there's always a meaningful local folder to keep an archival copy
+    in, without waiting on the browser's own download location/prompt."""
+    reports_dir = db.get_reports_dir(conn)
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    path = reports_dir / filename
+    path.write_bytes(content)
+    return path
 
 
 def _send_pdf_to_group(buf: io.BytesIO, caption: str, group_name: str, filename: str) -> None:
@@ -2040,10 +2078,13 @@ def summary_save_text():
     summary_data = _compute_summary(preset, include_unreviewed)
     tnr = _log_summary_generation(summary_data, preset, source="download", format="text")
     content = generator.render_summary_text(summary_data, site_name=config.SITE_NAME, narrative=narrative)
-    buf = io.BytesIO(content.encode("utf-8"))
+    content_bytes = content.encode("utf-8")
+    filename = naming.build_report_filename(_unit_name(), "hotbedomning", "txt", tnr=tnr)
+    with db.get_connection() as conn:
+        _write_report_to_reports_dir(conn, content_bytes, filename)
     return send_file(
-        buf, mimetype="text/plain", as_attachment=True,
-        download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "txt", tnr=tnr),
+        io.BytesIO(content_bytes), mimetype="text/plain", as_attachment=True,
+        download_name=filename,
     )
 
 
@@ -2056,10 +2097,13 @@ def summary_save_pdf():
 
     summary_data = _compute_summary(preset, include_unreviewed)
     tnr = _log_summary_generation(summary_data, preset, source="download", format="pdf")
-    buf = generator.render_summary_pdf(summary_data, site_name=config.SITE_NAME, narrative=narrative)
+    content_bytes = generator.render_summary_pdf(summary_data, site_name=config.SITE_NAME, narrative=narrative).read()
+    filename = naming.build_report_filename(_unit_name(), "hotbedomning", "pdf", tnr=tnr)
+    with db.get_connection() as conn:
+        _write_report_to_reports_dir(conn, content_bytes, filename)
     return send_file(
-        buf, mimetype="application/pdf", as_attachment=True,
-        download_name=naming.build_report_filename(_unit_name(), "hotbedomning", "pdf", tnr=tnr),
+        io.BytesIO(content_bytes), mimetype="application/pdf", as_attachment=True,
+        download_name=filename,
     )
 
 
@@ -2103,11 +2147,7 @@ def entities_send_watchlist():
     analysis.py's regex/Jaccard text clustering over raw events instead
     of the entities database this tool now maintains."""
     with db.get_connection() as conn:
-        rows = db.list_watchlist_entities(conn)
-        entries = [
-            {"entity": row, "events": db.list_events_for_entity(conn, row["id"])}
-            for row in rows
-        ]
+        entries = _watchlist_entries(conn)
 
     if not entries:
         flash("Inga poster på bevakningslistan att skicka.", "error")
@@ -2124,6 +2164,73 @@ def entities_send_watchlist():
     else:
         flash(f"Bevakningslistan skickad till Signal-gruppen '{recurring_group}'.")
 
+    return redirect(url_for("events.list_entities"))
+
+
+def _watchlist_entries(conn) -> list[dict]:
+    rows = db.list_watchlist_entities(conn)
+    return [
+        {"entity": row, "events": db.list_events_for_entity(conn, row["id"])}
+        for row in rows
+    ]
+
+
+@bp.route("/entities/save-watchlist", methods=["POST"])
+def entities_save_watchlist():
+    """Saves the bevakningslista as a file -- both to the
+    Inställningar-configured Rapportmapp and as a browser download, same
+    dual behaviour as the hotbild/händelserapport "Spara"/"Skapa"
+    actions (see _write_report_to_reports_dir)."""
+    fmt = request.form.get("format", "pdf")
+    with db.get_connection() as conn:
+        entries = _watchlist_entries(conn)
+        if not entries:
+            flash("Inga poster på bevakningslistan att spara.", "error")
+            return redirect(url_for("events.list_entities"))
+
+        if fmt == "text":
+            content_bytes = generator.render_watchlist_markdown(
+                entries, site_name=config.SITE_NAME
+            ).encode("utf-8")
+            mimetype = "text/markdown"
+            filename = naming.build_report_filename(_unit_name(), "bevakningslista", "md")
+        else:
+            content_bytes = generator.render_watchlist_pdf(entries, site_name=config.SITE_NAME).read()
+            mimetype = "application/pdf"
+            filename = naming.build_report_filename(_unit_name(), "bevakningslista", "pdf")
+
+        _write_report_to_reports_dir(conn, content_bytes, filename)
+
+    return send_file(
+        io.BytesIO(content_bytes), mimetype=mimetype, as_attachment=True, download_name=filename,
+    )
+
+
+@bp.route("/entities/import-watchlist", methods=["POST"])
+def entities_import_watchlist():
+    """Reads a previously saved/sent bevakningslista Markdown file back
+    into entity records -- e.g. picking up a list another unit exported
+    and sent over. See entities.parse_watchlist_markdown/
+    import_watchlist_entries for the format and dedup rules."""
+    file = request.files.get("file")
+    if not file or not file.filename:
+        flash("Välj en bevakningslista-fil (Markdown, .md/.txt) att importera.", "error")
+        return redirect(url_for("events.list_entities"))
+    try:
+        text = file.read().decode("utf-8")
+    except UnicodeDecodeError:
+        flash("Kunde inte läsa filen som UTF-8-text.", "error")
+        return redirect(url_for("events.list_entities"))
+
+    parsed = entities.parse_watchlist_markdown(text)
+    if not parsed:
+        flash("Inga poster hittades i filen -- är det en bevakningslista sparad härifrån?", "error")
+        return redirect(url_for("events.list_entities"))
+
+    with db.get_connection() as conn:
+        created, updated = entities.import_watchlist_entries(conn, parsed)
+
+    flash(f"Importerade {created + updated} poster från bevakningslistan ({created} nya, {updated} uppdaterade).")
     return redirect(url_for("events.list_entities"))
 
 

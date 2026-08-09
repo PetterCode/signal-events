@@ -191,3 +191,151 @@ def sync_event_entities(conn: sqlite3.Connection, event_id: int) -> None:
 
     db.replace_auto_entity_links_for_event(conn, event_id, entity_ids)
     db.prune_orphaned_auto_entities(conn, previously_linked_ids | set(entity_ids))
+
+
+# --- Importing a previously saved/sent bevakningslista ----------------------
+#
+# Reverse of reports/generator.py's render_watchlist_markdown, for the
+# "Importera bevakningslista" button on Personer, fordon och objekt --
+# e.g. picking a list another unit exported and sent over back up into
+# entity records. Deliberately duplicates the small section-title
+# mapping rather than importing it from reports.generator: that module
+# is the presentation layer (reportlab/PDF rendering) and has no reason
+# to be a dependency of this one.
+_WATCHLIST_SECTION_TYPES = {"Personer": "person", "Fordon": "vehicle", "Objekt": "object"}
+
+# "{label} ({N} händelse/händelser)[ — bevakas manuellt]" -- label is
+# whatever text precedes the *last* such parenthesised count, so a label
+# that itself happens to contain parentheses still splits correctly.
+_WATCHLIST_HEADING_RE = re.compile(
+    r"^(?P<label>.+) \((?P<count>\d+) (?:händelse|händelser)\)(?P<manual> — bevakas manuellt)?$"
+)
+
+# Same "don't split inside a value" trick as _FIELD_SPLIT_RE above, for
+# the one-line comma-separated "Reg.nr: X, Key: value, ..." detail line
+# _watchlist_entry_details() produces.
+_WATCHLIST_DETAIL_SPLIT_RE = re.compile(r",\s*(?=[A-ZÅÄÖ][^:,]*:)")
+_WATCHLIST_DETAIL_KV_RE = re.compile(r"^([^:]+):\s*(.*)$")
+
+
+class ImportedWatchlistEntry:
+    def __init__(
+        self, entity_type: str, label: str, attributes: dict[str, str],
+        registration: str | None, notes: str | None, watchlist: bool,
+    ):
+        self.entity_type = entity_type
+        self.label = label
+        self.attributes = attributes
+        self.registration = registration
+        self.notes = notes
+        self.watchlist = watchlist
+
+
+def parse_watchlist_markdown(text: str) -> list[ImportedWatchlistEntry]:
+    """Reads a bevakningslista markdown file back into entity records.
+    Only each "### label (...)" heading and its one "- details" line are
+    used; the indented "  - Händelse ..." lines underneath list events
+    from the *exporting* unit's own database, which have no meaning
+    here, so they're ignored entirely -- an imported record starts with
+    no linked events of its own.
+
+    Same caveat as the composer-block parser above: the details line has
+    no delimiter between the last "Key: value" pair and any trailing
+    freeform notes, so a comma inside that last value and real trailing
+    notes are ambiguous -- both end up appended to the last key's value.
+    Good enough for a round-trip through this tool's own export, not a
+    general-purpose parser."""
+    entries: list[ImportedWatchlistEntry] = []
+    current_type: str | None = None
+
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("## "):
+            current_type = _WATCHLIST_SECTION_TYPES.get(stripped[3:].strip())
+            continue
+        if current_type is None:
+            continue
+        if stripped.startswith("### "):
+            match = _WATCHLIST_HEADING_RE.match(stripped[4:])
+            if match is None:
+                continue
+            entries.append(ImportedWatchlistEntry(
+                entity_type=current_type, label=match.group("label").strip(),
+                attributes={}, registration=None, notes=None,
+                watchlist=match.group("manual") is not None,
+            ))
+            continue
+        # A top-level "- " (no leading whitespace) is the one details
+        # line for the entry just appended; anything indented (the
+        # "  - Händelse ..." lines) is skipped by falling through here.
+        if raw_line.startswith("- ") and entries:
+            attributes: dict[str, str] = {}
+            registration = None
+            notes_parts: list[str] = []
+            for part in _WATCHLIST_DETAIL_SPLIT_RE.split(stripped[2:]):
+                part = part.strip()
+                if not part:
+                    continue
+                kv = _WATCHLIST_DETAIL_KV_RE.match(part)
+                if kv is None:
+                    notes_parts.append(part)
+                    continue
+                key, value = kv.group(1).strip(), kv.group(2).strip()
+                if key == "Reg.nr":
+                    registration = _normalize_plate(value)
+                else:
+                    attributes[key] = value
+            entries[-1].attributes = attributes
+            entries[-1].registration = registration
+            entries[-1].notes = ", ".join(notes_parts) or None
+
+    return entries
+
+
+def import_watchlist_entries(
+    conn: sqlite3.Connection, entries: list[ImportedWatchlistEntry],
+) -> tuple[int, int]:
+    """Creates/updates entity records from parse_watchlist_markdown's
+    output. Always sets watchlist=True regardless of whether the
+    exporting unit had it manually flagged there -- the point of
+    importing another unit's list is to start watching for these here
+    too, and an imported record starts with zero linked events in this
+    database, so without the flag it would never make it onto a future
+    bevakningslista despite having just been imported for exactly that.
+    Vehicles dedupe globally by plate, like sync_event_entities; persons
+    and objects dedupe by an exact (type, label) match, since neither
+    has a more reliable identifier. Returns (created, updated) counts."""
+    created = updated = 0
+    for entry in entries:
+        entity_id = None
+        if entry.entity_type == "vehicle" and entry.registration:
+            existing = db.find_entity_by_registration(conn, "vehicle", entry.registration)
+            if existing is not None:
+                entity_id = existing["id"]
+        if entity_id is None:
+            same_label = next(
+                (e for e in db.list_entities(conn, entity_type=entry.entity_type) if e["label"] == entry.label),
+                None,
+            )
+            if same_label is not None:
+                entity_id = same_label["id"]
+
+        if entity_id is not None:
+            existing_row = db.get_entity(conn, entity_id)
+            existing_attrs = json.loads(existing_row["attributes"]) if existing_row["attributes"] else {}
+            db.update_entity(conn, entity_id, {
+                "attributes": {**existing_attrs, **entry.attributes},
+                "notes": entry.notes or existing_row["notes"],
+                "watchlist": True,
+            })
+            updated += 1
+        else:
+            db.insert_entity(
+                conn, entity_type=entry.entity_type, label=entry.label,
+                registration=entry.registration, attributes=entry.attributes,
+                notes=entry.notes, source="manual", watchlist=True,
+            )
+            created += 1
+    return created, updated

@@ -22,6 +22,13 @@ ATTACHMENTS_DIR = Path(
     os.environ.get("SIGNAL_EVENTS_ATTACHMENTS_DIR", DATA_DIR / "attachments")
 ).resolve()
 
+# Where every generated report (hotbedömning, händelserapport,
+# bevakningslista) is persisted to disk on top of the browser's own
+# download, since this app runs on the user's own laptop -- a
+# db.get_reports_dir() override set on Inställningar takes priority over
+# this default, same layering as the map tile URL/mode settings.
+REPORTS_DIR = Path(os.environ.get("SIGNAL_EVENTS_REPORTS_DIR", DATA_DIR / "reports")).resolve()
+
 # Number linked/registered with signal-cli, e.g. "+15551234567". Only needed
 # for `sync`, which is the one command that requires network access.
 PHONE_NUMBER = os.environ.get("SIGNAL_EVENTS_PHONE_NUMBER")
@@ -191,3 +198,4 @@ def ensure_dirs() -> None:
     ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     TILE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
