@@ -54,6 +54,27 @@ def test_clear_event_attachment_files_tolerates_missing_directory(tmp_path, monk
     _clear_event_attachment_files()  # must not raise
 
 
+def test_event_detail_post_toggles_the_important_marker_and_shows_it_on_the_list():
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "Norra grinden", "marks": "Notering"})
+    with db_module.get_connection() as conn:
+        event_id = db_module.list_events(conn)[0]["id"]
+
+    resp = client.post(f"/events/{event_id}", data={"mark_important": "1"}, follow_redirects=True)
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_event(conn, event_id)["is_important"] == 1
+    assert b'class="badge badge-important"' in resp.data
+
+    resp = client.get("/events", query_string={"since": "all"})
+    assert b'<span class="badge badge-important">h\xc3\xb6g vikt</span>' in resp.data
+
+    resp = client.post(f"/events/{event_id}", data={}, follow_redirects=True)
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.get_event(conn, event_id)["is_important"] == 0
+
+
 def test_summary_page_remembers_last_viewed_period_across_navigation():
     """Clicking the plain "Sammanställd hotbedömning" nav link (no query
     params -- see base.html) after having viewed a different period must

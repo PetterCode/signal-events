@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS events (
     is_trivial_reviewed INTEGER NOT NULL DEFAULT 0,
     is_duplicate INTEGER NOT NULL DEFAULT 0,
     is_duplicate_reviewed INTEGER NOT NULL DEFAULT 0,
+    is_important INTEGER NOT NULL DEFAULT 0, -- human-set only, no
+                                              -- auto-classifier like
+                                              -- is_trivial/is_duplicate
     is_sensor INTEGER NOT NULL DEFAULT 0,
     source_unit TEXT, -- NULL = this unit's own event; otherwise the
                        -- angränsande enhet (adjacent_units.name) it was
@@ -291,6 +294,7 @@ def init_db() -> None:
         _migrate_add_column(conn, "events", "is_trivial_reviewed", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "is_duplicate", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "is_duplicate_reviewed", "INTEGER NOT NULL DEFAULT 0")
+        _migrate_add_column(conn, "events", "is_important", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "is_sensor", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "lat", "REAL")
         _migrate_add_column(conn, "events", "lon", "REAL")
@@ -383,8 +387,8 @@ def insert_event(conn: sqlite3.Connection, message_id: int, fields: dict[str, An
         """INSERT INTO events
            (message_id, event_time, place, count, object, activity, marks,
             reported_by, next_steps, raw_text, needs_review, is_trivial,
-            is_duplicate, is_sensor, source_unit, lat, lon, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            is_duplicate, is_important, is_sensor, source_unit, lat, lon, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             message_id,
             fields.get("event_time"),
@@ -399,6 +403,7 @@ def insert_event(conn: sqlite3.Connection, message_id: int, fields: dict[str, An
             1 if fields.get("needs_review", True) else 0,
             1 if fields.get("is_trivial", False) else 0,
             1 if fields.get("is_duplicate", False) else 0,
+            1 if fields.get("is_important", False) else 0,
             1 if fields.get("is_sensor", False) else 0,
             fields.get("source_unit"),
             fields.get("lat"),
@@ -415,7 +420,7 @@ def update_event(conn: sqlite3.Connection, event_id: int, fields: dict[str, Any]
         "event_time", "place", "count", "object", "activity", "marks",
         "reported_by", "next_steps", "needs_review", "is_trivial",
         "is_trivial_reviewed", "is_duplicate", "is_duplicate_reviewed",
-        "source_unit", "lat", "lon",
+        "is_important", "source_unit", "lat", "lon",
     ]
     updates = {k: v for k, v in fields.items() if k in columns}
     if not updates:

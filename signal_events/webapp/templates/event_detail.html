@@ -18,6 +18,9 @@
       beskrivning, och utesluts därför automatiskt ur hotbedömningen.
     </p>
   {% endif %}
+  {% if event.is_important %}
+    <p class="badge badge-important">Hög vikt &mdash; manuellt markerad</p>
+  {% endif %}
 
   <div class="card">
     <h3>
@@ -202,6 +205,13 @@
         Sparas din markering här, oavsett vilken väg den går, skriver den
         automatiska dublettkontrollen aldrig över den igen.
       </p>
+
+      <label>
+        <input type="checkbox" name="mark_important" {{ 'checked' if event.is_important else '' }}
+               style="width:auto;display:inline;vertical-align:middle">
+        Hög vikt (lyfts fram i Tidslinje &mdash; en manuell markering, ingen
+        automatisk bedömning görs)
+      </label>
 
       <div class="actions">
         <button type="submit">Spara</button>

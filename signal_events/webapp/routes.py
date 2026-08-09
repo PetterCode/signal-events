@@ -1352,6 +1352,7 @@ def event_detail(event_id: int):
             # this is the only way to clear a false-positive duplicate
             # flag (or confirm one the heuristic missed) and have it stick.
             fields["is_duplicate_reviewed"] = 1
+            fields["is_important"] = 1 if request.form.get("mark_important") else 0
             db.update_event(conn, event_id, fields)
             entities.sync_event_entities(conn, event_id)
             _save_uploaded_photos(conn, event["message_id"])

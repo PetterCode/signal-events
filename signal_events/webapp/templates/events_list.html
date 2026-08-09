@@ -53,6 +53,9 @@
             {% if row.is_duplicate %}
               <span class="badge badge-trivial">dublett</span>
             {% endif %}
+            {% if event.is_important %}
+              <span class="badge badge-important">hög vikt</span>
+            {% endif %}
             {% if event.source_unit %}
               <span class="badge badge-adjacent">från {{ event.source_unit }}</span>
             {% endif %}

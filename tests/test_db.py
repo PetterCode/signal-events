@@ -760,6 +760,30 @@ def test_update_event_can_set_is_duplicate():
         assert db.get_event(conn, event_id)["is_duplicate"] == 0
 
 
+def test_insert_event_defaults_is_important_to_false():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db.insert_event(conn, message_id=message_id, fields={"place": "X"})
+        assert db.get_event(conn, event_id)["is_important"] == 0
+
+
+def test_update_event_can_set_is_important():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db.insert_event(conn, message_id=message_id, fields={"place": "X"})
+        db.update_event(conn, event_id, {"is_important": True})
+        assert db.get_event(conn, event_id)["is_important"] == 1
+
+        db.update_event(conn, event_id, {"is_important": False})
+        assert db.get_event(conn, event_id)["is_important"] == 0
+
+
 def test_delete_event_removes_event_and_its_message_and_attachments():
     with db.get_connection() as conn:
         message_id = db.insert_message(
@@ -1139,6 +1163,7 @@ def test_migrate_add_is_trivial_column_is_idempotent_on_an_old_schema(tmp_path, 
         assert len(events) == 1
         assert events[0]["place"] == "Pre-existing place"
         assert events[0]["is_trivial"] == 0
+        assert events[0]["is_important"] == 0
 
 
 def test_reset_events_only_clears_event_log_not_settings_or_adjacent():
