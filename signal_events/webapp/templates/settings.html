@@ -22,12 +22,14 @@
   <div class="card">
     <h3>Rensa händelselogg</h3>
     <p style="font-size:0.85rem;color:#666">
-      Tar bort samtliga rapporter, meddelanden och bilagor. Enhetsnamnet,
-      listan över angränsande enheter och mottagna statusrapporter från
-      dem lämnas orörda. Detta går <strong>inte</strong> att ångra.
+      Tar bort samtliga rapporter, meddelanden och bilagor, samt hela
+      listan över personer, fordon och objekt (Personer, fordon och
+      objekt-sidan) som byggts upp från dem. Enhetsnamnet, listan över
+      angränsande enheter och mottagna statusrapporter från dem lämnas
+      orörda. Detta går <strong>inte</strong> att ångra.
     </p>
     <form method="post" action="{{ url_for('events.reset_event_log') }}"
-          onsubmit="return confirm('Detta tar bort ALLA rapporter, meddelanden och bilagor permanent och går inte att ångra. Är du säker?');">
+          onsubmit="return confirm('Detta tar bort ALLA rapporter, meddelanden, bilagor samt listan över personer, fordon och objekt permanent och går inte att ångra. Är du säker?');">
       <div class="actions">
         <button type="submit" class="btn-danger">Rensa händelselogg</button>
       </div>

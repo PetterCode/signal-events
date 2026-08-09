@@ -495,7 +495,14 @@ def test_delete_event_keeps_an_auto_entity_still_linked_to_another_event():
         assert db.list_entities_for_event(conn, second_event)[0]["id"] == shared_entity_id
 
 
-def test_reset_events_clears_auto_entities_and_links_but_keeps_manual_entities():
+def test_reset_events_clears_every_entity_including_manual_ones():
+    """"Rensa händelselogg" clears the whole Personer/fordon/objekt
+    database along with the event log it was built from -- manually
+    catalogued/watchlisted entities included, not just entities.py's
+    "auto" extractions, since a recurring-persons list left behind after
+    its source events are gone would just be stale, orphaned reference
+    data, unlike the adjacent-unit roster this reset genuinely leaves
+    alone."""
     with db.get_connection() as conn:
         event_id = _make_event(conn, marks="Person 1 (A – Age: 30-40)")
         entities.sync_event_entities(conn, event_id)
@@ -504,8 +511,8 @@ def test_reset_events_clears_auto_entities_and_links_but_keeps_manual_entities()
         db.reset_events(conn)
 
         assert db.list_events(conn) == []
-        assert db.list_entities(conn, entity_type="person") == []
-        assert db.get_entity(conn, manual_entity_id) is not None
+        assert db.list_entities(conn) == []
+        assert db.get_entity(conn, manual_entity_id) is None
 
 
 def test_reset_all_clears_every_entity_including_manual_ones():

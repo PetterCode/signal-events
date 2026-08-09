@@ -295,7 +295,12 @@ always added manually, from the same page. Every record's own page shows
 every event it's linked to, everything "seen together with" it (other
 records sharing at least one of the same events), an optional uploaded
 photo, and free-text notes — and supports linking/unlinking an event, or
-deleting the record, by hand at any time.
+deleting the record, by hand at any time. The whole database (including
+manually catalogued/watchlisted records, not just auto-extracted ones)
+is cleared along with the event log by "Rensa händelselogg"/"Rensa allt"
+on Inställningar — it exists to track who/what recurs *in this event
+log*, not a standalone roster like the adjacent-unit list, so it
+shouldn't outlive the events it was built from.
 
 **Bevakningslista (watchlist).** The "Skicka bevakningslista" button on
 Personer, fordon och objekt sends a focused PDF list to Signal: every

@@ -43,10 +43,19 @@ def test_clear_event_attachment_files_leaves_adjacent_subdir_alone(tmp_path, mon
     adjacent_dir.mkdir(parents=True)
     (adjacent_dir / "status.pdf").write_bytes(b"fake")
 
+    entities_dir = tmp_path / "entities" / "3"
+    entities_dir.mkdir(parents=True)
+    (entities_dir / "reference.jpg").write_bytes(b"fake")
+
     _clear_event_attachment_files()
 
     assert not event_dir.exists()
     assert (adjacent_dir / "status.pdf").exists()
+    # Entity photos are removed alongside event attachments -- consistent
+    # with reset_events() now also clearing the entities rows they belong
+    # to (see db.py), not left dangling on disk with no DB row pointing
+    # at them.
+    assert not entities_dir.exists()
 
 
 def test_clear_event_attachment_files_tolerates_missing_directory(tmp_path, monkeypatch):
@@ -1642,6 +1651,22 @@ def test_save_ollama_port_route_rejects_a_non_numeric_or_out_of_range_port():
 
     with db_module.get_connection() as conn:
         assert db_module.get_ollama_port(conn) != "0"
+
+
+def test_reset_event_log_route_also_clears_manually_catalogued_entities():
+    """"Rensa händelselogg" must take the whole Personer/fordon/objekt
+    database with it, including a manually added (not auto-extracted)
+    record -- it exists to track who/what recurs in this event log, so
+    it shouldn't outlive the log itself."""
+    client = create_app().test_client()
+    client.post("/entities/new", data={"entity_type": "object", "label": "Katalogiserad post"})
+    client.post("/events/new", data={"place": "X", "marks": "Person 1 (A – Age: 30-40)"})
+
+    resp = client.post("/database/reset-events", follow_redirects=True)
+
+    assert resp.status_code == 200
+    with db_module.get_connection() as conn:
+        assert db_module.list_entities(conn) == []
 
 
 def test_reset_database_route_restores_map_settings_to_their_defaults():

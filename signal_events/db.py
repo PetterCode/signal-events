@@ -594,14 +594,15 @@ _ALL_TABLES = [
 
 # Just the event log -- events, their source messages, and attachments.
 # Leaves settings (unit name), the adjacent-unit roster, and received
-# adjacent-unit status reports untouched. entity_event_links is cleared
-# alongside it (a link to a deleted event is meaningless either way), and
-# entities.py-extracted ("auto") entities go with it since they only
-# existed to represent something in the now-gone event log; manually
-# catalogued entities (source='manual') are reference data like the
-# adjacent-unit roster and survive, same as everything else this leaves
-# untouched.
-_EVENT_LOG_TABLES = ["entity_event_links", "attachments", "events", "messages"]
+# adjacent-unit status reports untouched. entity_event_links and every
+# entities row (Personer, fordon och objekt) go with it too -- including
+# manually catalogued/watchlisted ones, not just entities.py's "auto"
+# extractions -- since that whole page exists to track who/what keeps
+# showing up *in this event log*, and a recurring-persons list left
+# behind after the events it was built from are gone would be stale,
+# orphaned reference data, not a genuinely separate roster like the
+# adjacent-unit list.
+_EVENT_LOG_TABLES = ["entity_event_links", "attachments", "events", "entities", "messages"]
 
 
 def _reset_tables(conn: sqlite3.Connection, tables: list[str]) -> None:
@@ -620,17 +621,19 @@ def _reset_tables(conn: sqlite3.Connection, tables: list[str]) -> None:
 
 
 def reset_events(conn: sqlite3.Connection) -> None:
-    """Partial reset: wipes only the event log (events, their source
-    messages, and attachments), plus every entity_event_links row and
-    auto-extracted entity -- both are meaningless once the events they
-    came from are gone. Manually catalogued entities (source='manual')
-    are reference data, like the adjacent-unit roster, and survive this,
-    same as everything else it leaves untouched. Used by the "Rensa
-    händelselogg" button on Inställningar. The caller is also responsible
-    for clearing the non-adjacent parts of config.ATTACHMENTS_DIR on
-    disk, since files there aren't tracked by SQLite itself."""
+    """Partial reset: wipes the event log (events, their source messages,
+    and attachments) plus every entity_event_links row and every entities
+    row (Personer, fordon och objekt) -- manually catalogued/watchlisted
+    entities included, not just entities.py's "auto" extractions, since
+    the whole point of that page is tracking who/what recurs *in this
+    event log*, not a standalone roster like the adjacent-unit list.
+    Used by the "Rensa händelselogg" button on Inställningar. The caller
+    is also responsible for clearing the non-adjacent parts of
+    config.ATTACHMENTS_DIR on disk, since files there aren't tracked by
+    SQLite itself -- entity photos included, since those live under
+    ATTACHMENTS_DIR/entities/<id>/, not under the excluded "adjacent"
+    subdir."""
     _reset_tables(conn, _EVENT_LOG_TABLES)
-    conn.execute("DELETE FROM entities WHERE source = 'auto'")
 
 
 def reset_all(conn: sqlite3.Connection) -> None:
