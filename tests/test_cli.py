@@ -298,3 +298,36 @@ def test_cmd_summary_excludes_events_received_from_adjacent_units(tmp_path):
 
     content = output_path.read_text(encoding="utf-8")
     assert "Rapporter i underlaget: 1" in content
+
+
+def test_cmd_summary_excludes_trivial_routine_events(tmp_path):
+    from signal_events import db as db_module
+
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={
+                "place": "Skogsbrynet", "object": "Rådjur",
+                "activity": "Passerade genom området", "needs_review": False,
+            },
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={
+                "place": "Huvudentrén", "object": "Civil",
+                "activity": "Fotograferade stängslet", "needs_review": False,
+            },
+        )
+
+    output_path = tmp_path / "summary.txt"
+    args = MagicMock(
+        since="all", include_unreviewed=False, format="text", output=str(output_path), llm=False,
+    )
+    cli.cmd_summary(args)
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "Rapporter i underlaget: 1" in content

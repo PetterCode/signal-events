@@ -252,7 +252,8 @@ def cmd_summary(args: argparse.Namespace) -> None:
             conn, since=_since_iso(args.since), needs_review=needs_review, own_only=True
         )
         duplicate_ids = duplicates.classify_duplicate_events(conn, events)
-        events = [e for e in events if e["id"] not in duplicate_ids]
+        trivial_ids = triviality.classify_trivial_events(conn, events)
+        events = [e for e in events if e["id"] not in duplicate_ids and e["id"] not in trivial_ids]
         summary_data = analysis.build_summary(events, period_label=args.since)
         override = db.get_threat_override(conn)
         summary_data = analysis.apply_threat_override(summary_data, override)

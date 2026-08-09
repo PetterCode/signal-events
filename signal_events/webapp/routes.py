@@ -1764,14 +1764,20 @@ def _compute_summary(preset: str, include_unreviewed: bool) -> analysis.Summary:
     only needs to be applied here to reach all of them consistently.
     own_only=True: events received from an angränsande enhet (see
     events.new_adjacent_event) never feed this unit's own threat
-    assessment, the same way they're kept out of generated reports."""
+    assessment, the same way they're kept out of generated reports.
+    Duplicates and trivial/routine events are excluded the same way
+    generated reports already exclude them (see triviality.py/
+    duplicates.py) -- a routine wildlife sighting or a repeated report
+    of the same incident shouldn't move the needle on the threat level
+    any more than it does on the report text itself."""
     with db.get_connection() as conn:
         needs_review = None if include_unreviewed else False
         events = db.list_events(
             conn, since=_since_iso(preset), needs_review=needs_review, own_only=True
         )
         duplicate_ids = duplicates.classify_duplicate_events(conn, events)
-        events = [e for e in events if e["id"] not in duplicate_ids]
+        trivial_ids = triviality.classify_trivial_events(conn, events)
+        events = [e for e in events if e["id"] not in duplicate_ids and e["id"] not in trivial_ids]
         summary_data = analysis.build_summary(events, period_label=preset)
         override = db.get_threat_override(conn)
     return analysis.apply_threat_override(summary_data, override)

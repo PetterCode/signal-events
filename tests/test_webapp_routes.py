@@ -1080,6 +1080,46 @@ def test_summary_excludes_a_duplicate_report_of_the_same_incident():
     assert sum(1 for e in events if e["is_duplicate"]) == 1
 
 
+def test_summary_excludes_a_trivial_routine_event_from_the_threat_assessment():
+    """A routine, non-notable event (see triviality.py) must not count
+    towards the threat analysis's underlag any more than it does towards
+    a generated report's own content -- excluded here the same way
+    duplicates already are, not just left out of the rendered report
+    text."""
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id,
+            fields={
+                "place": "Skogsbrynet", "object": "Rådjur",
+                "activity": "Passerade genom området", "needs_review": False,
+            },
+        )
+        message_id2 = db_module.insert_message(
+            conn, signal_timestamp=2, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(
+            conn, message_id=message_id2,
+            fields={
+                "place": "Huvudentrén", "object": "Civil",
+                "activity": "Fotograferade stängslet", "needs_review": False,
+            },
+        )
+
+    client = create_app().test_client()
+    resp = client.get("/summary?since=all")
+
+    assert b"Rapporter i underlaget: 1" in resp.data
+
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+    assert sum(1 for e in events if e["is_trivial"]) == 1
+
+
 def test_summary_override_route_saves_and_reflects_in_the_header():
     client = create_app().test_client()
 

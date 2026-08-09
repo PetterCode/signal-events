@@ -594,7 +594,9 @@ Browse events, open one, check/correct the 8 fields, tick "Mark as
 reviewed", save. Photos attached to the original message are shown inline.
 The same form has a **"Trivial"** checkbox for routine, non-notable
 reports (a deer crossing, a weather note, "nothing to report" on a
-patrol) — tick it and the event is excluded from generated reports. A
+patrol) — tick it and the event is excluded both from generated reports
+and from the "Sammanställd hotbedömning" threat analysis (see "RED is
+reserved for..." below), the same way a duplicate already is. A
 **"Hög vikt"** checkbox does the opposite kind of flagging — a badge on
 the event page and in Tidslinje's "Status" column, for a report a human
 wants to stand out at a glance — but purely manual: unlike Trivial/
@@ -706,14 +708,16 @@ keyword heuristics used elsewhere in this app, looking for routine,
 non-notable content (wildlife, weather notes, "nothing to report" on a
 patrol) among the events about to be included. Anything it recognizes is
 marked `is_trivial` in the database — same effect as ticking the
-"Trivial" checkbox by hand — and left out of that report. This is
-decision support, not a verdict: check `data/events.db` or the events
-list if you want to confirm what got filtered. Once a human reviews an
-event (saves the review form at all, whichever way the "Trivial"
-checkbox ends up), that judgment is final — the filter never overrides
-it on a later report, whether the event was reviewed and left
-non-trivial, or was auto-flagged trivial and then manually corrected
-back to normal.
+"Trivial" checkbox by hand — and left out of that report, as well as out
+of the "Sammanställd hotbedömning" threat analysis (see below): a
+routine wildlife sighting shouldn't move the needle on the threat level
+any more than it does on the report text. This is decision support, not
+a verdict: check `data/events.db` or the events list if you want to
+confirm what got filtered. Once a human reviews an event (saves the
+review form at all, whichever way the "Trivial" checkbox ends up), that
+judgment is final — the filter never overrides it on a later report or
+assessment, whether the event was reviewed and left non-trivial, or was
+auto-flagged trivial and then manually corrected back to normal.
 
 **Generate a consolidated threat-level summary** (fully offline):
 
@@ -757,21 +761,24 @@ the site name shown in the report heading (defaults to "skyddsobjektet").
 `--format` accepts `pdf`, `markdown`, or `text`, same as `report` above.
 
 Before the analysis runs, it also excludes **duplicate reports**
-(`signal_events/duplicates.py`): two events with the same place and
-object, near-identical wording, and logged close together in time are
-treated as one incident described twice rather than a real second
-occurrence — this is deliberately distinct from *recurrence* (the same
-vehicle or person showing up again over time), which is exactly what the
-pattern-matching above is for. Anything recognized this way is marked
-`is_duplicate` in the database (shown as a "dublett" badge on the events
-list and the event page) and left out of the summary's event count and
-groups; it isn't removed, so it still shows up in the events list and can
-be deleted by hand if it's genuinely redundant. Automated sensor-trigger
-events (`SIGNAL_EVENTS_SENSOR_GROUP`, described above) are never
-evaluated for this at all — a sensor is *expected* to fire the same
-templated message at the same place repeatedly, and each trigger is a
-genuine, separate occurrence, not a person accidentally filing the same
-report twice.
+(`signal_events/duplicates.py`) and **trivial/routine events** (the same
+trivial filter described above, run live against the period's events
+rather than only at report-generation time): two events with the same
+place and object, near-identical wording, and logged close together in
+time are treated as one incident described twice rather than a real
+second occurrence — this is deliberately distinct from *recurrence* (the
+same vehicle or person showing up again over time), which is exactly
+what the pattern-matching above is for. Anything recognized this way is
+marked `is_duplicate`/`is_trivial` in the database (shown as "dublett"/
+"trivial" badges on the events list and the event page) and left out of
+the summary's event count and groups; events aren't removed, so they
+still show up in the events list and can be corrected or deleted by hand
+if the automatic call was wrong. Automated sensor-trigger events
+(`SIGNAL_EVENTS_SENSOR_GROUP`, described above) are never evaluated for
+duplication at all — a sensor is *expected* to fire the same templated
+message at the same place repeatedly, and each trigger is a genuine,
+separate occurrence, not a person accidentally filing the same report
+twice.
 
 A false positive can always be corrected by hand: the event's own page
 has a **"Dublett"** checkbox, the same "Trivial" checkbox's pattern —
