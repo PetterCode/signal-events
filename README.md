@@ -277,29 +277,58 @@ created (or matched) as its own record on the "Personer, fordon och
 objekt" nav tab and linked to that event. A vehicle is matched **across
 different reports** by its normalized plate — the same real vehicle
 mentioned in three separate sightings becomes one record with three
-linked events, not three unrelated ones; a person has no such reliable
-cross-report identifier, so each report's own "Person 1"/"Person 2" stays
-a distinct record unless a human manually links two together. Editing or
-resaving an event re-syncs its automatically-found records without
-touching anything added by hand. Objects (a found item, a suspicious
-package, ...) have no automatic marker to key off and are always added
-manually, from the same page. Every record's own page shows every event
-it's linked to, everything "seen together with" it (other records
-sharing at least one of the same events), an optional uploaded photo,
-and free-text notes — and supports linking/unlinking an event, or
+linked events, not three unrelated ones. A person found via the
+structured composer block (see above) has no such reliable identifier,
+so each report's own "Person 1"/"Person 2" stays a distinct record
+unless a human manually links two together — but a person described in
+plain prose with no composer block at all (typed up outside the app: a
+file import, a historical backlog, another system) *is* matched across
+reports, by the same Jaccard text-similarity heuristic the "Sammanställd
+hotbedömning" page's own recurring-person clustering uses (see "RED is
+reserved for..." below) — not exact identity like a plate, but the best
+a rule-based parser can do for prose with no other structural marker,
+and the only way a freeform-described recurring person ever gets picked
+up at all. Editing or resaving an event re-syncs its automatically-found
+records without touching anything added by hand. Objects (a found item,
+a suspicious package, ...) have no automatic marker to key off and are
+always added manually, from the same page. Every record's own page shows
+every event it's linked to, everything "seen together with" it (other
+records sharing at least one of the same events), an optional uploaded
+photo, and free-text notes — and supports linking/unlinking an event, or
 deleting the record, by hand at any time.
 
 **Bevakningslista (watchlist).** The "Skicka bevakningslista" button on
 Personer, fordon och objekt sends a focused PDF list to Signal: every
 record linked to 2 or more events (recurring, straight from the
-database — no text-similarity guessing involved) plus every record a
-human has flagged with its own "Bevaka" checkbox, regardless of its own
-event count. Sent to its own group by default `SIGNAL_EVENTS_RECURRING_GROUP`
+already-persisted database — no fresh text-similarity guessing at
+list-render time, unlike the identity matching described above) plus
+every record a human has flagged with its own "Bevaka" checkbox,
+regardless of its own event count. Sent to its own group by default `SIGNAL_EVENTS_RECURRING_GROUP`
 (`"Stabsassistent test-återkommande"`) — the same group used to be fed
 from the "Sammanställd hotbedömning" page's own recurring-vehicle/person
 text-clustering (see "RED is reserved for..." below), which remains a
 separate, purely informational part of the automatic threat score and is
-no longer what this button sends.
+no longer what this button sends. Next to it, **"Spara som text"/"Spara
+som PDF"** save the same list to disk (see "Rapportmapp" below) and as a
+browser download, without needing Signal at all — for archiving, or for
+handing to another unit by any channel. **"Importera bevakningslista"**
+reads a list saved this way (by this unit or another) back into the
+entities database: every person/vehicle/object on the imported list is
+created or matched (vehicles by plate, persons/objects by exact label)
+and always ends up flagged "Bevaka", since an imported record starts
+with zero linked events of its own in this database and would otherwise
+never resurface on a future locally-generated list despite having just
+been imported specifically to be watched for.
+
+**Rapportmapp — where generated reports are archived.** Every generated
+report (hotbedömning, händelserapport, bevakningslista, in any format)
+is written to a folder on disk in addition to triggering the browser's
+own download, since this app runs on the user's own laptop and a fixed,
+predictable archive location is more useful than relying on wherever the
+browser happens to save downloads. Defaults to `data/reports/`
+(`SIGNAL_EVENTS_REPORTS_DIR` env var, or override it per-installation on
+Inställningar under "Enhet" — leave the field blank and save to reset to
+the default).
 
 **Kart-vy — position of events on a map.** If a report's "Ställe" field (or
 its body text) contains a coordinate, the position is converted to lat/lon
@@ -553,8 +582,13 @@ Browse events, open one, check/correct the 8 fields, tick "Mark as
 reviewed", save. Photos attached to the original message are shown inline.
 The same form has a **"Trivial"** checkbox for routine, non-notable
 reports (a deer crossing, a weather note, "nothing to report" on a
-patrol) — tick it and the event is excluded from generated reports. An
-event page also has a **"Ta bort händelse"** (delete) button — confirmed
+patrol) — tick it and the event is excluded from generated reports. A
+**"Hög vikt"** checkbox does the opposite kind of flagging — a badge on
+the event page and in Tidslinje's "Status" column, for a report a human
+wants to stand out at a glance — but purely manual: unlike Trivial/
+Dublett there's no auto-classifier behind it (no reliable rule to guess
+importance), and it has no effect on what's included in a generated
+report. An event page also has a **"Ta bort händelse"** (delete) button — confirmed
 before it takes effect — that permanently removes the event along with
 its source message and any attached photos; use it for genuine mistakes
 or unwanted duplicates rather than leaving them in the log.
@@ -925,6 +959,9 @@ data/
   attachments/<msg>/     copied image files from Signal messages
   attachments/entities/<id>/  uploaded reference photos for a person/
                           vehicle/object record
+  reports/                archived copy of every generated report (see
+                          "Rapportmapp" above) — override with
+                          SIGNAL_EVENTS_REPORTS_DIR or on Inställningar
 ```
 
 Back this directory up like any other sensitive local data store — it's
