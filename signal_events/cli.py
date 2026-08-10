@@ -128,7 +128,14 @@ def _run_watch_loop(incident_group: str, poll_timeout: int, prefix: str = "") ->
     obvious the poller is alive even when nothing new has arrived (silent
     long-running processes are hard to trust). All three group names are
     resolved once, here, at the start of the loop -- a later change on
-    Inställningar only takes effect on the next restart of this loop."""
+    Inställningar only takes effect on the next restart of this loop.
+
+    Since signal_client.watch_multi now retries a failing cycle instead
+    of raising (see its own docstring), a stuck failure would otherwise
+    just look identical to "nothing new right now" in this terminal too
+    -- so every cycle also checks db.get_last_receive_error() and prints
+    the error the moment it appears (and again the moment it clears),
+    rather than waiting for the periodic heartbeat below."""
     from . import signal_client  # imported lazily: needs network only here
 
     adjacent_group = _resolve_report_group()
@@ -138,10 +145,27 @@ def _run_watch_loop(incident_group: str, poll_timeout: int, prefix: str = "") ->
         f"'{adjacent_group}' (rapport-gruppen, för angränsande enheters status) och "
         f"'{sensor_group}' (sensorgruppen, för automatiska sensorhändelser)..."
     )
+    with db.get_connection() as conn:
+        db.log_system_event(
+            conn, "watch_started",
+            f"incident={incident_group!r} adjacent={adjacent_group!r} sensor={sensor_group!r}",
+        )
     silent_polls = 0
+    was_erroring = False
     for incident_count, adjacent_count, sensor_count in signal_client.watch_multi(
         incident_group, adjacent_group, sensor_group, poll_timeout_seconds=poll_timeout
     ):
+        with db.get_connection() as conn:
+            current_error = db.get_last_receive_error(conn)
+        if current_error:
+            if not was_erroring:
+                print(f"{prefix}signal-cli receive misslyckas: {current_error}", file=sys.stderr)
+                print(f"{prefix}Försöker igen automatiskt tills det fungerar igen.", file=sys.stderr)
+                was_erroring = True
+        elif was_erroring:
+            print(f"{prefix}signal-cli receive fungerar igen.")
+            was_erroring = False
+
         if incident_count or adjacent_count or sensor_count:
             if incident_count:
                 print(f"{prefix}Hämtade {incident_count} ny(a) rapport(er) från '{incident_group}'.")
@@ -155,7 +179,7 @@ def _run_watch_loop(incident_group: str, poll_timeout: int, prefix: str = "") ->
                     f"{prefix}Hämtade {sensor_count} sensorhändelse(r) från '{sensor_group}'."
                 )
             silent_polls = 0
-        else:
+        elif not current_error:
             silent_polls += 1
             if silent_polls % _WATCH_HEARTBEAT_EVERY == 0:
                 print(f"{prefix}Fortfarande bevakar, inga nya rapporter än.")
@@ -168,9 +192,13 @@ def cmd_watch(args: argparse.Namespace) -> None:
         _run_watch_loop(_resolve_watch_group(args.group), args.poll_timeout)
     except signal_client.SignalCliError as exc:
         print(f"watch misslyckades: {exc}", file=sys.stderr)
+        with db.get_connection() as conn:
+            db.log_system_event(conn, "watch_stopped", str(exc))
         raise SystemExit(1)
     except KeyboardInterrupt:
         print("\nAvslutar bevakning.")
+        with db.get_connection() as conn:
+            db.log_system_event(conn, "watch_stopped", "Avslutad manuellt (Ctrl+C).")
 
 
 def _run_watch_in_background(incident_group: str, poll_timeout: int) -> None:
@@ -184,6 +212,21 @@ def _run_watch_in_background(incident_group: str, poll_timeout: int) -> None:
             "[watch] Bakgrundsbevakningen är avstängd; webbgränssnittet "
             "fortsätter fungera som vanligt.", file=sys.stderr,
         )
+        with db.get_connection() as conn:
+            db.log_system_event(conn, "watch_stopped", str(exc))
+    except Exception as exc:  # pragma: no cover - last-resort safety net
+        # signal_client.watch_multi already retries anything it
+        # recognises (see its docstring), so reaching here means
+        # something genuinely unexpected happened -- still log it rather
+        # than letting Python's default thread excepthook print a bare
+        # traceback with no trace left anywhere the web UI can show.
+        print(f"[watch] oväntat fel, bakgrundsbevakningen avslutas: {exc}", file=sys.stderr)
+        print(
+            "[watch] Bakgrundsbevakningen är avstängd; webbgränssnittet "
+            "fortsätter fungera som vanligt.", file=sys.stderr,
+        )
+        with db.get_connection() as conn:
+            db.log_system_event(conn, "watch_stopped", f"Oväntat fel: {exc}")
 
 
 def cmd_serve(args: argparse.Namespace) -> None:

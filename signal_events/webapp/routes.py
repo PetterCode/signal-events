@@ -225,16 +225,22 @@ def _format_dt(iso: str | None) -> str:
 @bp.app_context_processor
 def inject_header_status() -> dict:
     """Populates the status strip shown under "Signalhändelser" on every
-    page: unit name, the threat level, and when a report (incident report
-    or threat-level summary) was last sent to the Signal group that
-    adjacent units' own status reports also come in on. The threat level
-    here must always agree with the Sammanställd hotbedömning page, so it
-    reuses that page's own computation (_compute_summary, which excludes
-    duplicates) over the exact same session-remembered period/filter that
-    page is currently showing -- not some independently fixed window that
-    could silently disagree with it. Skipped for the login page itself --
-    it doesn't extend base.html (so none of this would be shown anyway),
-    and this avoids running a duplicate-classification DB write for every
+    page: unit name, the threat level, when a report (incident report or
+    threat-level summary) was last sent to the Signal group that adjacent
+    units' own status reports also come in on, and when Signal was last
+    successfully *received* from (see db.record_receive_attempt) -- the
+    only way to tell from the web UI that the background watch poller
+    (see cli.py's _run_watch_loop/signal_client.watch_multi) is actually
+    alive and succeeding, since the web server itself stays up
+    regardless of whether that separate thread has died or has started
+    failing every cycle. The threat level here must always agree with
+    the Sammanställd hotbedömning page, so it reuses that page's own
+    computation (_compute_summary, which excludes duplicates) over the
+    exact same session-remembered period/filter that page is currently
+    showing -- not some independently fixed window that could silently
+    disagree with it. Skipped for the login page itself -- it doesn't
+    extend base.html (so none of this would be shown anyway), and this
+    avoids running a duplicate-classification DB write for every
     anonymous hit the login page gets from the network."""
     if request.endpoint in ("events.login", "events.logout"):
         return {}
@@ -243,6 +249,8 @@ def inject_header_status() -> dict:
     with db.get_connection() as conn:
         unit_name = db.get_unit_name(conn)
         last_adjacent_send_at = db.get_last_adjacent_send(conn)
+        last_receive_success_at = db.get_last_receive_success(conn)
+        receive_error = db.get_last_receive_error(conn)
         demo_mode = db.has_demo_events(conn)
         adjacent_reports = db.list_latest_adjacent_reports_per_unit(conn)
     threat = _compute_summary(preset, include_unreviewed).threat
@@ -259,6 +267,8 @@ def inject_header_status() -> dict:
         "header_threat": threat,
         "header_threat_period_label": _SINCE_LABELS.get(preset, preset),
         "header_last_adjacent_send": _format_dt(last_adjacent_send_at),
+        "header_last_receive_success": _format_dt(last_receive_success_at),
+        "header_receive_error": receive_error,
         "header_adjacent_statuses": adjacent_statuses,
         "header_demo_mode": demo_mode,
         "header_is_admin": _access_tier() == "admin",

@@ -72,8 +72,17 @@ def receive(timeout_seconds: int = 5) -> list[dict[str, Any]]:
     except subprocess.TimeoutExpired as exc:
         raise SignalCliError("signal-cli receive timed out") from exc
 
-    if result.returncode != 0 and not result.stdout:
-        raise SignalCliError(f"signal-cli failed: {result.stderr.strip()}")
+    if result.returncode != 0:
+        # Always an error, even when signal-cli happened to print some
+        # stdout before failing -- previously this only raised when
+        # stdout was *also* empty, so a partial/corrupted receive (exit
+        # code nonzero, some JSON lines still on stdout) was silently
+        # treated as a clean success, discarding the actual error on
+        # stderr entirely. That's exactly the kind of failure that made
+        # "receive seems to not work" hard to diagnose: nothing anywhere
+        # said it had actually failed.
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        raise SignalCliError(f"signal-cli failed (exit {result.returncode}): {detail}")
 
     return list(_iter_envelopes(result.stdout))
 
@@ -100,6 +109,23 @@ def _copy_attachment(
 def _envelope_group_id(inner: dict[str, Any]) -> Optional[str]:
     data_message = inner.get("dataMessage") or {}
     group_info = data_message.get("groupInfo") or {}
+    return group_info.get("groupId") or group_info.get("id")
+
+
+def _own_sync_message_group_id(inner: dict[str, Any]) -> Optional[str]:
+    """Group id of a message the linked account sent *itself* (from
+    another device/client using the same number), if any. Signal doesn't
+    deliver these to `dataMessage` -- they arrive as a `syncMessage`
+    sent-transcript instead, which `ingest_envelope` intentionally never
+    ingests (see its "sync-of-own-messages" comment, so this unit's own
+    outgoing reports don't get picked back up as if an adjacent unit sent
+    them). That's correct, but it also means someone testing ingestion by
+    messaging the incident group from the *same* phone/account signal-cli
+    is linked to will see nothing happen with no obvious explanation --
+    see watch_multi's use of this helper, which surfaces that specific
+    case in the system log instead of leaving it silent."""
+    sent_message = (inner.get("syncMessage") or {}).get("sentMessage") or {}
+    group_info = sent_message.get("groupInfo") or {}
     return group_info.get("groupId") or group_info.get("id")
 
 
@@ -221,13 +247,23 @@ def ingest_adjacent_report(
 def sync(timeout_seconds: int = 5, group_id: Optional[str] = None) -> int:
     """Fetch new messages from Signal and store them locally. Returns the
     number of new messages ingested. If `group_id` is given, only messages
-    from that Signal group are ingested."""
-    envelopes = receive(timeout_seconds=timeout_seconds)
+    from that Signal group are ingested. Records the attempt via
+    db.record_receive_attempt either way (success or failure) -- see that
+    function's docstring -- so a one-shot `sync` failure shows up on the
+    header status strip the same way a watch-loop failure does, instead
+    of only ever being visible in whatever terminal happened to run it."""
+    try:
+        envelopes = receive(timeout_seconds=timeout_seconds)
+    except SignalCliError as exc:
+        with db.get_connection() as conn:
+            db.record_receive_attempt(conn, error=str(exc))
+        raise
     ingested = 0
     with db.get_connection() as conn:
         for envelope in envelopes:
             if ingest_envelope(conn, envelope, group_id=group_id):
                 ingested += 1
+        db.record_receive_attempt(conn)
     return ingested
 
 
@@ -414,12 +450,16 @@ def watch_group(
         iterations += 1
 
 
+_WATCH_RETRY_DELAY_SECONDS = 5.0
+
+
 def watch_multi(
     incident_group_name: str,
     adjacent_group_name: str,
     sensor_group_name: str,
     poll_timeout_seconds: int = 20,
     max_iterations: Optional[int] = None,
+    retry_delay_seconds: float = _WATCH_RETRY_DELAY_SECONDS,
 ) -> Iterator[tuple[int, int, int]]:
     """Resolve all three group names to ids once, then repeatedly long-poll
     signal-cli for new messages -- deliberately a *single* `receive` call
@@ -432,24 +472,76 @@ def watch_multi(
     the same event log as everything else. Yields (incident_count,
     adjacent_count, sensor_count) after each poll cycle. Runs until
     `max_iterations` polls have completed, or forever if None (the caller
-    stops it, e.g. on Ctrl+C)."""
+    stops it, e.g. on Ctrl+C).
+
+    A single bad cycle -- a transient network blip, signal-cli briefly
+    failing, an unexpected error from ingestion -- no longer kills the
+    loop: any exception during a cycle is caught, recorded via
+    db.record_receive_attempt (so it's visible on the header status
+    strip), logged to the system log (see below), and the loop waits
+    `retry_delay_seconds` before trying again rather than raising and
+    ending the generator. Only the very first *unresolvable* problem
+    (find_group_id_by_name failing above, before the loop starts --
+    e.g. a typo'd or renamed group name) still raises immediately, since
+    retrying that forever would just repeat the same failure. System-log
+    writes are edge-triggered (once when a run of failures starts, once
+    when it recovers), not one per cycle, so a multi-hour outage doesn't
+    flood Systemlogg with hundreds of identical entries.
+
+    One more case is logged (every time, not edge-triggered -- it's rare
+    enough not to flood anything): a message sent to the *incident* group
+    from the same account signal-cli is linked to. That's always a human
+    testing ingestion from their own phone, never routine app traffic --
+    this app only ever sends its own generated reports to the adjacent/
+    recurring groups, never the incident group -- so unlike the same
+    thing happening on the other two groups, it's unambiguous enough to
+    call out by name (see _own_sync_message_group_id's docstring for why
+    it's otherwise invisible)."""
     incident_group_id = find_group_id_by_name(incident_group_name)
     adjacent_group_id = find_group_id_by_name(adjacent_group_name)
     sensor_group_id = find_group_id_by_name(sensor_group_name)
     iterations = 0
+    was_erroring = False
     while max_iterations is None or iterations < max_iterations:
-        envelopes = receive(timeout_seconds=poll_timeout_seconds)
-        incident_count = 0
-        adjacent_count = 0
-        sensor_count = 0
-        with db.get_connection() as conn:
-            for envelope in envelopes:
-                if ingest_envelope(conn, envelope, group_id=incident_group_id):
-                    incident_count += 1
-                if ingest_adjacent_report(conn, envelope, group_id=adjacent_group_id):
-                    adjacent_count += 1
-                if ingest_envelope(conn, envelope, group_id=sensor_group_id, is_sensor=True):
-                    sensor_count += 1
+        try:
+            envelopes = receive(timeout_seconds=poll_timeout_seconds)
+            incident_count = 0
+            adjacent_count = 0
+            sensor_count = 0
+            with db.get_connection() as conn:
+                for envelope in envelopes:
+                    if ingest_envelope(conn, envelope, group_id=incident_group_id):
+                        incident_count += 1
+                    if ingest_adjacent_report(conn, envelope, group_id=adjacent_group_id):
+                        adjacent_count += 1
+                    if ingest_envelope(conn, envelope, group_id=sensor_group_id, is_sensor=True):
+                        sensor_count += 1
+                    inner = envelope.get("envelope", envelope)
+                    if _own_sync_message_group_id(inner) == incident_group_id:
+                        db.log_system_event(
+                            conn, "watch_self_message_skipped",
+                            "Ett meddelande skickat från samma Signal-konto som "
+                            "signal-cli använder sågs i bevakningsgruppen men "
+                            "hoppas över automatiskt -- Signal levererar egna "
+                            "skickade meddelanden annorlunda än mottagna, så de "
+                            "kan inte tas emot på samma sätt. Testa gärna genom "
+                            "att skicka från ett annat Signal-konto/telefon.",
+                        )
+                db.record_receive_attempt(conn)
+                if was_erroring:
+                    db.log_system_event(
+                        conn, "watch_recovered",
+                        "signal-cli receive succeeded again after a failure.",
+                    )
+                    was_erroring = False
+        except Exception as exc:
+            incident_count = adjacent_count = sensor_count = 0
+            with db.get_connection() as conn:
+                db.record_receive_attempt(conn, error=str(exc))
+                if not was_erroring:
+                    db.log_system_event(conn, "watch_error", str(exc))
+                    was_erroring = True
+            time.sleep(retry_delay_seconds)
         yield incident_count, adjacent_count, sensor_count
         iterations += 1
 

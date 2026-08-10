@@ -185,6 +185,16 @@ REPORTS_DIR_KEY = "reports_dir"
 # status strip on every page.
 LAST_ADJACENT_SEND_KEY = "last_adjacent_send_at"
 
+# Keys used in the `settings` table to track signal-cli *receive* health
+# (the mirror image of LAST_ADJACENT_SEND_KEY above, which only tracks
+# sending) -- see record_receive_attempt. Without these, whether the
+# background watch loop is actually alive and succeeding is invisible
+# from the web UI: the server itself stays up even if the poller thread
+# has silently died or signal-cli has started failing every cycle.
+LAST_RECEIVE_ATTEMPT_KEY = "last_receive_attempt_at"
+LAST_RECEIVE_SUCCESS_KEY = "last_receive_success_at"
+LAST_RECEIVE_ERROR_KEY = "last_receive_error"
+
 # Keys used in the `settings` table for a human-set override of the
 # current threat level (see Sammanställd hotbedömning's "Manuell
 # justering av hotnivå" card) -- layered on top of the automatic
@@ -931,6 +941,39 @@ def get_last_adjacent_send(conn: sqlite3.Connection) -> Optional[str]:
 
 def set_last_adjacent_send(conn: sqlite3.Connection) -> None:
     set_setting(conn, LAST_ADJACENT_SEND_KEY, now_iso())
+
+
+def get_last_receive_attempt(conn: sqlite3.Connection) -> Optional[str]:
+    return get_setting(conn, LAST_RECEIVE_ATTEMPT_KEY)
+
+
+def get_last_receive_success(conn: sqlite3.Connection) -> Optional[str]:
+    return get_setting(conn, LAST_RECEIVE_SUCCESS_KEY)
+
+
+def get_last_receive_error(conn: sqlite3.Connection) -> Optional[str]:
+    return get_setting(conn, LAST_RECEIVE_ERROR_KEY)
+
+
+def record_receive_attempt(conn: sqlite3.Connection, error: Optional[str] = None) -> None:
+    """Called by signal_client.py after every signal-cli receive attempt --
+    the one-shot `sync` command and every cycle of the watch loop alike --
+    the only way the header status strip (or anything else in the web UI)
+    can tell whether the background poller is actually alive and
+    succeeding, as opposed to having silently died: unlike a duplicate
+    key's `set_...` pair (e.g. set_last_adjacent_send), this one function
+    covers both outcomes, since attempt/success/error are always written
+    together. `error=None` records a success and clears any previously
+    stored error message; otherwise the error message is stored (and
+    `last_receive_success_at` is left at whenever it last actually
+    succeeded, so a human can see how long an outage has lasted)."""
+    now = now_iso()
+    set_setting(conn, LAST_RECEIVE_ATTEMPT_KEY, now)
+    if error is None:
+        set_setting(conn, LAST_RECEIVE_SUCCESS_KEY, now)
+        conn.execute("DELETE FROM settings WHERE key = ?", (LAST_RECEIVE_ERROR_KEY,))
+    else:
+        set_setting(conn, LAST_RECEIVE_ERROR_KEY, error)
 
 
 def get_threat_override(conn: sqlite3.Connection) -> Optional[dict]:

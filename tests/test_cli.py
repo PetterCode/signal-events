@@ -75,12 +75,54 @@ def test_run_watch_loop_polls_the_report_and_sensor_groups(monkeypatch):
     )
 
 
+def test_run_watch_loop_logs_watch_started():
+    with patch.object(signal_client, "watch_multi", return_value=iter([(0, 0, 0)])):
+        cli._run_watch_loop("Incident Group", poll_timeout=5)
+
+    with db.get_connection() as conn:
+        entries = db.list_system_log(conn)
+    assert any(e["event_type"] == "watch_started" for e in entries)
+
+
+def test_run_watch_loop_prints_and_clears_receive_error_immediately(capsys):
+    """The error must show up in the terminal the moment it appears (not
+    wait for the periodic heartbeat), and again the moment it clears --
+    signal_client.watch_multi retries a failing cycle internally now
+    (see its own docstring) rather than raising, so without this the
+    terminal would show nothing different at all during an outage."""
+    with patch.object(
+        signal_client, "watch_multi",
+        return_value=iter([(0, 0, 0), (0, 0, 0)]),
+    ), patch.object(
+        cli.db, "get_last_receive_error", side_effect=["nätverksfel", None],
+    ):
+        cli._run_watch_loop("Incident Group", poll_timeout=5)
+
+    captured = capsys.readouterr()
+    assert "nätverksfel" in captured.err
+    assert "Försöker igen automatiskt" in captured.err
+    assert "fungerar igen" in captured.out
+
+
 def test_cmd_watch_exits_nonzero_on_signal_cli_error():
     args = MagicMock(group="Incident Group", poll_timeout=20)
     with patch.object(signal_client, "watch_multi", side_effect=signal_client.SignalCliError("no group")):
         with pytest.raises(SystemExit) as exc_info:
             cli.cmd_watch(args)
     assert exc_info.value.code == 1
+
+
+def test_cmd_watch_logs_watch_stopped_on_signal_cli_error():
+    args = MagicMock(group="Incident Group", poll_timeout=20)
+    with patch.object(signal_client, "watch_multi", side_effect=signal_client.SignalCliError("no group")):
+        with pytest.raises(SystemExit):
+            cli.cmd_watch(args)
+
+    with db.get_connection() as conn:
+        entries = db.list_system_log(conn)
+    stopped = [e for e in entries if e["event_type"] == "watch_stopped"]
+    assert len(stopped) == 1
+    assert "no group" in stopped[0]["detail"]
 
 
 def test_cmd_serve_starts_background_thread_when_watch_set():
@@ -134,6 +176,34 @@ def test_run_watch_in_background_reports_signalclierror_without_raising(capsys):
     err = capsys.readouterr().err
     assert "misslyckades" in err
     assert "webbgränssnittet" in err
+
+    with db.get_connection() as conn:
+        entries = db.list_system_log(conn)
+    stopped = [e for e in entries if e["event_type"] == "watch_stopped"]
+    assert len(stopped) == 1
+    assert "no group" in stopped[0]["detail"]
+
+
+def test_run_watch_in_background_survives_an_unexpected_exception(capsys):
+    """Safety net for a genuinely unexpected bug -- signal_client.watch_multi
+    already retries anything it recognises internally (see its own
+    docstring), so this exercises the last-resort case: something it
+    couldn't handle escapes the generator entirely. Must not propagate
+    out of the thread target (Python's default thread excepthook would
+    just print a bare traceback with no trace anywhere the web UI can
+    show), and must still be logged."""
+    with patch.object(signal_client, "watch_multi", side_effect=RuntimeError("kaboom")):
+        cli._run_watch_in_background("Incident Group", 20)  # must not raise
+
+    err = capsys.readouterr().err
+    assert "oväntat fel" in err
+    assert "kaboom" in err
+
+    with db.get_connection() as conn:
+        entries = db.list_system_log(conn)
+    stopped = [e for e in entries if e["event_type"] == "watch_stopped"]
+    assert len(stopped) == 1
+    assert "kaboom" in stopped[0]["detail"]
 
 
 def test_cmd_report_excludes_newly_classified_trivial_events(tmp_path):

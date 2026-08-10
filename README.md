@@ -171,6 +171,38 @@ Ctrl+C. `--group` defaults to `"Stabsassistent test-händelser"`
 controls how many seconds each poll cycle waits for new messages
 (default 20).
 
+**A single bad poll cycle no longer kills the whole loop.** A transient
+network blip, signal-cli briefly failing, or an unexpected ingestion
+error used to propagate straight out and end watching permanently, with
+nothing to show for it beyond a terminal that had gone quiet — the
+single biggest reason this was hard to trust ("is it still running, or
+did it silently die an hour ago?"). Now a failing cycle is retried
+automatically every 5 seconds until it recovers, and the failure is
+visible in three places at once: the terminal prints it the moment it
+appears (and again the moment it clears, rather than waiting for the
+periodic heartbeat), the header status strip at the top of every web UI
+page shows **"Senast mottagning från Signal: ..."** plus a red
+**"Mottagning misslyckas"** badge while an error is active, and
+Systemlogg (admin-only, see below) records when watching started,
+stopped, started failing, and recovered — so a multi-hour outage shows
+up as two log lines (when it started, when it recovered), not hundreds
+of identical ones. Only one thing still stops the loop outright: an
+unresolvable Signal group name (a typo, a renamed/deleted group) at
+startup, since retrying that forever would just repeat the same
+failure — fix the name (`--group`/`SIGNAL_EVENTS_WATCH_GROUP`, or the
+Signal group settings in Inställningar) and restart.
+
+**Testing ingestion by messaging the incident group yourself?** Send it
+from a *different* phone/account than the one signal-cli is linked or
+registered to. A message from the *same* account arrives as a Signal
+"sync" transcript rather than a normal incoming message, and is
+intentionally never ingested (it's the same mechanism that keeps this
+unit's own outgoing reports from being picked back up as if an adjacent
+unit sent them) — so it'll silently do nothing, which used to be
+indistinguishable from a broken receive path. It's now called out by
+name in Systemlogg ("Eget testmeddelande hoppades över") so this doesn't
+look like a hang.
+
 This same command also polls a *second* group: `SIGNAL_EVENTS_REPORT_GROUP`
 (default `"Stabsassistent test-rapport"`) — the same group this unit's own
 generated reports are sent *to* (see "Send a report or summary to Signal"
@@ -249,10 +281,15 @@ group doubling as the adjacent-units exchange channel):
 python -m signal_events serve --watch --watch-group "Stabsassistent test-händelser"
 ```
 
-If the poller fails (no network, wrong group name, signal-cli not linked),
-it logs the error to the terminal and stops itself — the web UI keeps
-working normally either way. `--watch-poll-timeout` mirrors `watch`'s
-`--poll-timeout`.
+If the poller fails (no network, signal-cli not linked, an unexpected
+error), it retries automatically every 5 seconds rather than stopping
+itself — the web UI keeps working normally either way, and the failure
+is visible on the header status strip (a red "Mottagning misslyckas"
+badge, plus "Senast mottagning från Signal: ...") and in Systemlogg,
+not just the server's terminal output. Only a wrong/renamed/deleted
+`--watch-group` name stops the poller outright, since that can't be
+fixed by retrying — restart `serve --watch` with the correct name once
+it's known. `--watch-poll-timeout` mirrors `watch`'s `--poll-timeout`.
 
 **Structured person/vehicle descriptions (Kännetecken).** On any event's
 edit form, "+ Lägg till person" and "+ Lägg till fordon" open a small
@@ -1000,7 +1037,12 @@ pytest
   match the accuracy of an LLM-based extractor, by design. Always review
   before reporting.
 - `signal-cli` must remain linked/registered; if the link is revoked from
-  the phone, `sync` will start failing and you'll need to re-link.
+  the phone, `sync`/`watch`/`serve --watch` will start failing and you'll
+  need to re-link. You don't have to watch the terminal to notice: the
+  header status strip shows a red "Mottagning misslyckas" badge (hover
+  it for the actual error) and stops updating "Senast mottagning från
+  Signal", and Systemlogg (admin-only) records when the failures started
+  and, once you've re-linked, when they recovered.
 - **Newly added group members.** `receive`/`send` pass
   `--trust-new-identities always` to signal-cli, so a message from someone
   it hasn't seen before (a just-added group member, or someone who

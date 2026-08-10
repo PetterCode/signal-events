@@ -400,6 +400,34 @@ def test_set_last_adjacent_send_records_a_timestamp():
     datetime.fromisoformat(recorded)  # must parse as a valid ISO timestamp
 
 
+def test_receive_status_defaults_to_none():
+    with db.get_connection() as conn:
+        assert db.get_last_receive_attempt(conn) is None
+        assert db.get_last_receive_success(conn) is None
+        assert db.get_last_receive_error(conn) is None
+
+
+def test_record_receive_attempt_success_sets_attempt_and_success_and_clears_error():
+    with db.get_connection() as conn:
+        db.record_receive_attempt(conn, error="tidigare fel")
+        assert db.get_last_receive_error(conn) == "tidigare fel"
+
+        db.record_receive_attempt(conn)
+
+        assert db.get_last_receive_attempt(conn) is not None
+        assert db.get_last_receive_success(conn) is not None
+        assert db.get_last_receive_error(conn) is None
+
+
+def test_record_receive_attempt_failure_sets_attempt_and_error_but_not_success():
+    with db.get_connection() as conn:
+        db.record_receive_attempt(conn, error="signal-cli misslyckades")
+
+        assert db.get_last_receive_attempt(conn) is not None
+        assert db.get_last_receive_success(conn) is None
+        assert db.get_last_receive_error(conn) == "signal-cli misslyckades"
+
+
 def test_has_demo_events_is_false_by_default():
     with db.get_connection() as conn:
         assert db.has_demo_events(conn) is False

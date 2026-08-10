@@ -4,9 +4,11 @@
   <h1>Systemlogg</h1>
   <p style="font-size:0.85rem;color:#666">
     Endast synlig för administratören (inloggad från den här datorn).
-    Visar inloggningar, utloggningar, serverstarter och nekade
-    åtkomstförsök &mdash; inte de rapporterade händelserna själva, se
-    Händelser för dem.
+    Visar inloggningar, utloggningar, serverstarter, nekade
+    åtkomstförsök samt Signal-bevakningens status (start, stopp, när
+    mottagning börjar/slutar misslyckas, och testmeddelanden skickade
+    från samma Signal-konto som signal-cli använder) &mdash; inte de
+    rapporterade händelserna själva, se Händelser för dem.
   </p>
 
   <div class="card">
@@ -47,6 +49,11 @@
                 {% elif entry.event_type == "logout" %}Utloggning
                 {% elif entry.event_type == "server_start" %}Server startad
                 {% elif entry.event_type == "blocked_access" %}Åtkomst nekad (utanför nätverket)
+                {% elif entry.event_type == "watch_started" %}Signal-bevakning startad
+                {% elif entry.event_type == "watch_error" %}Signal-mottagning misslyckas
+                {% elif entry.event_type == "watch_recovered" %}Signal-mottagning fungerar igen
+                {% elif entry.event_type == "watch_stopped" %}Signal-bevakning avslutad
+                {% elif entry.event_type == "watch_self_message_skipped" %}Eget testmeddelande hoppades över
                 {% else %}{{ entry.event_type }}
                 {% endif %}
               </td>

@@ -233,13 +233,40 @@ def test_header_status_strip_shows_unit_name_threat_level_and_last_adjacent_send
 
     assert b"Kompani 1" in resp.data
     assert b"badge-level-green" in resp.data  # no events yet -- default is green
-    assert b"Aldrig" in resp.data  # no report sent to adjacent units yet
+    # No report sent to adjacent units yet, and no receive attempt yet
+    # either (see the separate "Senast mottagning" line) -- both read
+    # "Aldrig" until each respective thing has happened at least once.
+    assert b"Senast rapport till angr\xc3\xa4nsande enheter: Aldrig" in resp.data
+    assert b"Senast mottagning fr\xc3\xa5n Signal: Aldrig" in resp.data
 
     with db_module.get_connection() as conn:
         db_module.set_last_adjacent_send(conn)
 
     resp_after_send = client.get("/events")
-    assert b"Aldrig" not in resp_after_send.data
+    assert b"Senast rapport till angr\xc3\xa4nsande enheter: Aldrig" not in resp_after_send.data
+    # The receive status is independent of the adjacent-send one -- still
+    # "Aldrig" here, since receive() has never actually run in this test.
+    assert b"Senast mottagning fr\xc3\xa5n Signal: Aldrig" in resp_after_send.data
+
+
+def test_header_shows_a_warning_badge_when_receive_is_currently_failing():
+    client = create_app().test_client()
+    with db_module.get_connection() as conn:
+        db_module.record_receive_attempt(conn, error="signal-cli misslyckades: not linked")
+
+    resp = client.get("/events")
+
+    assert b"Mottagning misslyckas" in resp.data
+    assert b"badge-important" in resp.data
+    # The full error is in the badge's title attribute (a hover tooltip),
+    # not dumped into the header text itself.
+    assert b"not linked" in resp.data
+
+    with db_module.get_connection() as conn:
+        db_module.record_receive_attempt(conn)  # recovers
+
+    resp_after_recovery = client.get("/events")
+    assert b"Mottagning misslyckas" not in resp_after_recovery.data
 
 
 def test_header_hides_adjacent_status_row_when_no_reports_received():

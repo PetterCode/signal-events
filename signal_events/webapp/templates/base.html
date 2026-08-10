@@ -125,6 +125,12 @@
         &middot; hotnivå ({{ header_threat_period_label }})
       </span>
       <span>Senast rapport till angränsande enheter: {{ header_last_adjacent_send }}</span>
+      <span>Senast mottagning från Signal: {{ header_last_receive_success }}</span>
+      {% if header_receive_error %}
+        <span class="badge badge-important" title="{{ header_receive_error }}">
+          Mottagning misslyckas{{ " — se Systemlogg" if header_is_admin else "" }}
+        </span>
+      {% endif %}
       {% if header_demo_mode %}
         <span class="badge badge-demo">DEMO-LÄGE AKTIVT</span>
       {% endif %}

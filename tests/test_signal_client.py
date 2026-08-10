@@ -40,6 +40,24 @@ def test_receive_trusts_new_identities_so_new_group_members_are_not_silently_dro
     assert cmd.index("--trust-new-identities") < cmd.index("receive")
 
 
+def test_receive_raises_on_nonzero_exit_even_when_stdout_has_partial_output(monkeypatch):
+    """Regression: a nonzero exit code used to only raise when stdout was
+    *also* empty -- a partial/corrupted receive (exit code nonzero, some
+    JSON lines still on stdout before signal-cli crashed) was silently
+    treated as a clean success, discarding the real error on stderr
+    entirely. That's exactly the kind of failure that made receive
+    "seem to not work" with no visible cause."""
+    monkeypatch.setattr(config, "PHONE_NUMBER", "+46701234567")
+    result = MagicMock(
+        returncode=1,
+        stdout='{"envelope": {"timestamp": 1}}\n',
+        stderr="signal-cli crashed mid-receive",
+    )
+    with patch("subprocess.run", return_value=result):
+        with pytest.raises(signal_client.SignalCliError, match="signal-cli crashed mid-receive"):
+            signal_client.receive(timeout_seconds=5)
+
+
 class _FakePopen:
     def __init__(self, lines: list[str], returncode: int = 0):
         self.stdout = iter(lines)
@@ -162,10 +180,32 @@ def _group_envelope(timestamp: int, group_id: str | None, message: str = "hej") 
     return {"envelope": inner}
 
 
+def _own_sync_envelope(timestamp: int, group_id: str | None, message: str = "test") -> dict:
+    """Shape of a `syncMessage` sent-transcript -- what signal-cli
+    delivers instead of a `dataMessage` when the linked account sends a
+    message itself (from another device/client using the same number)."""
+    sent_message = {"timestamp": timestamp, "message": message}
+    if group_id is not None:
+        sent_message["groupInfo"] = {"groupId": group_id}
+    return {"envelope": {"timestamp": timestamp, "syncMessage": {"sentMessage": sent_message}}}
+
+
 def test_envelope_group_id_extracts_from_group_info():
     envelope = _group_envelope(1, "GROUP_A")
     inner = envelope["envelope"]
     assert signal_client._envelope_group_id(inner) == "GROUP_A"
+
+
+def test_own_sync_message_group_id_extracts_from_sent_message():
+    envelope = _own_sync_envelope(1, "GROUP_A")
+    inner = envelope["envelope"]
+    assert signal_client._own_sync_message_group_id(inner) == "GROUP_A"
+
+
+def test_own_sync_message_group_id_none_for_ordinary_data_message():
+    envelope = _group_envelope(1, "GROUP_A")
+    inner = envelope["envelope"]
+    assert signal_client._own_sync_message_group_id(inner) is None
 
 
 def test_envelope_group_id_none_for_direct_message():
@@ -288,6 +328,36 @@ def test_watch_group_polls_sync_with_resolved_group_id_and_stops_at_max_iteratio
     assert mock_sync.call_count == 3
     for call in mock_sync.call_args_list:
         assert call.kwargs == {"timeout_seconds": 15, "group_id": "GROUP_A"}
+
+
+def test_sync_records_a_successful_receive_attempt():
+    from signal_events import db as db_module
+
+    with patch.object(signal_client, "receive", return_value=[]):
+        count = signal_client.sync(timeout_seconds=5)
+
+    assert count == 0
+    with db_module.get_connection() as conn:
+        assert db_module.get_last_receive_success(conn) is not None
+        assert db_module.get_last_receive_error(conn) is None
+
+
+def test_sync_records_and_reraises_a_failed_receive_attempt():
+    """A one-shot `sync` failure used to be visible only in whatever
+    terminal happened to run it (see cli.cmd_sync's own print) -- now
+    it's also recorded the same way a watch-loop failure is, so it shows
+    up on the header status strip regardless of who/what called sync()."""
+    from signal_events import db as db_module
+
+    with patch.object(
+        signal_client, "receive", side_effect=signal_client.SignalCliError("no network"),
+    ):
+        with pytest.raises(signal_client.SignalCliError, match="no network"):
+            signal_client.sync(timeout_seconds=5)
+
+    with db_module.get_connection() as conn:
+        assert db_module.get_last_receive_success(conn) is None
+        assert db_module.get_last_receive_error(conn) == "no network"
 
 
 def test_send_message_builds_correct_command(monkeypatch):
@@ -452,6 +522,111 @@ def test_watch_multi_dispatches_envelopes_to_correct_store():
         adjacent = db_module.list_latest_adjacent_reports_per_unit(conn)
         assert len(adjacent) == 1
         assert adjacent[0]["unit_name"] == "Kompani_2"
+
+
+def test_watch_multi_records_receive_status_on_success():
+    from signal_events import db as db_module
+
+    with patch.object(
+        signal_client, "find_group_id_by_name",
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+    ), patch.object(signal_client, "receive", return_value=[]):
+        list(signal_client.watch_multi(
+            "Incident Group", "Adjacent Group", "Sensor Group", max_iterations=1,
+        ))
+
+    with db_module.get_connection() as conn:
+        assert db_module.get_last_receive_attempt(conn) is not None
+        assert db_module.get_last_receive_success(conn) is not None
+        assert db_module.get_last_receive_error(conn) is None
+
+
+def test_watch_multi_survives_a_failing_cycle_and_keeps_polling():
+    """The bug this fixes: previously any exception during a poll cycle
+    (a transient network blip, signal-cli briefly failing) propagated
+    straight out of the generator and killed the whole watch loop
+    permanently -- a single bad cycle meant no more ingestion until a
+    human noticed and manually restarted the process. Now it's recorded
+    (db.record_receive_attempt) and logged once (not once per retry --
+    see the edge-triggered system_log assertions below), and polling
+    continues."""
+    from signal_events import db as db_module
+
+    envelopes = [_group_envelope(1, "INCIDENT_GID", message="Fordon vid grinden")]
+    with patch.object(
+        signal_client, "find_group_id_by_name",
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+    ), patch.object(
+        signal_client, "receive",
+        side_effect=[signal_client.SignalCliError("network unreachable"), envelopes],
+    ):
+        counts = list(signal_client.watch_multi(
+            "Incident Group", "Adjacent Group", "Sensor Group",
+            max_iterations=2, retry_delay_seconds=0,
+        ))
+
+    # First cycle failed (no exception raised to the caller, just an
+    # empty result); second cycle succeeded and ingested normally.
+    assert counts == [(0, 0, 0), (1, 0, 0)]
+
+    with db_module.get_connection() as conn:
+        assert db_module.get_last_receive_error(conn) is None  # cleared by the recovery
+        assert db_module.get_last_receive_success(conn) is not None
+        log_entries = db_module.list_system_log(conn)
+        error_entries = [e for e in log_entries if e["event_type"] == "watch_error"]
+        recovered_entries = [e for e in log_entries if e["event_type"] == "watch_recovered"]
+        assert len(error_entries) == 1
+        assert "network unreachable" in error_entries[0]["detail"]
+        assert len(recovered_entries) == 1
+
+
+def test_watch_multi_logs_a_self_sent_message_in_the_incident_group():
+    """Regression test for the "signal receive seems to hang" report: a
+    human testing ingestion by messaging the incident group from the same
+    phone/account signal-cli is linked to sees nothing happen, with no
+    explanation anywhere -- Signal delivers that as a syncMessage, which
+    ingest_envelope correctly never ingests (it's not a real incoming
+    report), but that silence looked identical to a broken receive path.
+    Now it's called out by name in the system log instead."""
+    from signal_events import db as db_module
+
+    envelopes = [_own_sync_envelope(1, "INCIDENT_GID", message="test från min egen telefon")]
+    with patch.object(
+        signal_client, "find_group_id_by_name",
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+    ), patch.object(signal_client, "receive", return_value=envelopes):
+        counts = list(signal_client.watch_multi(
+            "Incident Group", "Adjacent Group", "Sensor Group", max_iterations=1,
+        ))
+
+    assert counts == [(0, 0, 0)]  # never ingested as a normal event
+    with db_module.get_connection() as conn:
+        assert db_module.list_events(conn) == []
+        log_entries = db_module.list_system_log(conn)
+        skipped = [e for e in log_entries if e["event_type"] == "watch_self_message_skipped"]
+        assert len(skipped) == 1
+
+
+def test_watch_multi_does_not_log_self_sent_messages_in_other_groups():
+    """The adjacent/sensor groups legitimately carry this app's own
+    outgoing traffic (reports/recurring lists sent via send_to_group_by_
+    name) -- logging every echo of those would be pure noise, so only the
+    incident group (which this app never sends to) gets called out."""
+    from signal_events import db as db_module
+
+    envelopes = [_own_sync_envelope(1, "ADJACENT_GID", message="ett skickat rapport-eko")]
+    with patch.object(
+        signal_client, "find_group_id_by_name",
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+    ), patch.object(signal_client, "receive", return_value=envelopes):
+        list(signal_client.watch_multi(
+            "Incident Group", "Adjacent Group", "Sensor Group", max_iterations=1,
+        ))
+
+    with db_module.get_connection() as conn:
+        log_entries = db_module.list_system_log(conn)
+        skipped = [e for e in log_entries if e["event_type"] == "watch_self_message_skipped"]
+        assert len(skipped) == 0
 
 
 def test_send_to_group_by_name_resolves_then_sends():
