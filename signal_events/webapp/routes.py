@@ -1349,7 +1349,24 @@ def event_detail(event_id: int):
 
         if request.method == "POST":
             fields = _field_form_values()
-            fields.update(_position_form_values())
+            position = _position_form_values()
+            if position:
+                fields.update(position)
+            elif event["lat"] is None or event["lon"] is None:
+                # Mirrors _new_event_view's fallback: the hidden lat/lon
+                # inputs pre-fill from the event's current position (see
+                # event_detail.html), so position is only ever {} here
+                # when the event has never had one -- e.g. a human just
+                # typed/pasted an MGRS grid into Plats instead of
+                # dropping a pin, the same way a Signal-ingested report's
+                # own Ställe field gets auto-extracted. Never runs once a
+                # position already exists, so it can't clobber a manual
+                # pin-drop from an earlier save.
+                latlon = coordinates.extract_position(fields.get("place")) or coordinates.extract_position(
+                    event["raw_text"]
+                )
+                if latlon is not None:
+                    fields["lat"], fields["lon"] = latlon
             fields["needs_review"] = 0 if request.form.get("mark_reviewed") else 1
             fields["is_trivial"] = 1 if request.form.get("mark_trivial") else 0
             # A human just made a deliberate call on the "Trivial"

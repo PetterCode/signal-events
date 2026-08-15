@@ -416,6 +416,54 @@ def test_event_detail_post_without_lat_lon_fields_leaves_existing_position_untou
     assert event["lon"] == pytest.approx(15.3)
 
 
+def test_event_detail_post_without_a_pin_auto_extracts_an_mgrs_reference_from_place():
+    """Regression test: unlike new_event, editing an *existing* event's
+    Plats field with a hand-typed/pasted MGRS grid (e.g. copied straight
+    out of a 7srapport.com report) silently never picked up a position --
+    the hidden lat/lon inputs always resubmit the event's current (here:
+    absent) position, so _position_form_values() returned {} and nothing
+    ever fell back to coordinates.py the way _new_event_view already did."""
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db_module.insert_event(conn, message_id=message_id, fields={"place": "X"})
+
+    client = create_app().test_client()
+    client.post(f"/events/{event_id}", data={"place": "Ställe: 33VXG 58994 26103, Hasseludden"})
+
+    with db_module.get_connection() as conn:
+        event = db_module.get_event(conn, event_id)
+    assert event["lat"] is not None
+    assert event["lon"] is not None
+
+
+def test_event_detail_post_auto_extraction_never_overwrites_an_existing_position():
+    """The fallback above must only fire when the event has no position
+    yet -- otherwise an unrelated field edit (e.g. fixing a typo in
+    Antal) on an event whose position came from an earlier manual
+    pin-drop would silently jump it to wherever new text in Plats
+    happens to parse as, discarding the human's own placement."""
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        event_id = db_module.insert_event(
+            conn, message_id=message_id,
+            fields={"place": "Östra grinden", "lat": 58.6, "lon": 15.3},
+        )
+
+    client = create_app().test_client()
+    client.post(f"/events/{event_id}", data={"place": "Östra grinden 33VVN1234567890"})
+
+    with db_module.get_connection() as conn:
+        event = db_module.get_event(conn, event_id)
+    assert event["lat"] == pytest.approx(58.6)
+    assert event["lon"] == pytest.approx(15.3)
+
+
 def test_event_detail_shows_a_hint_when_the_position_is_outside_the_cached_area():
     """Regression: an event positioned far from Kartcentrum used to just
     render an all-gray map with no explanation -- the hint tells the user
