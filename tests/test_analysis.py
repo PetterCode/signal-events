@@ -320,6 +320,22 @@ def test_parse_adjacent_level_prefers_an_explicit_bedomning_line():
     assert analysis.parse_adjacent_level(body) == "red"
 
 
+def test_parse_adjacent_level_reads_the_stated_conclusion_not_an_escalation_threshold():
+    """Regression test: the header status strip showed RÖD for a unit
+    whose own Bedömning line explicitly said "fortsatt GUL" -- the old
+    code took the most severe keyword anywhere on the Bedömning line,
+    which matched the RÖD mentioned only as the not-yet-reached
+    escalation threshold ("kräver upprepning för RÖD"), not the actual
+    stated conclusion. The first keyword on the line is the real
+    conclusion; anything after it is discussion, not the assessment."""
+    body = (
+        "Status 2.Kompani, dag 6:\n"
+        "En beväpnad person siktades vid Skogsvägen bakom lägret (enstaka iakttagelse).\n"
+        "Bedömning: fortsatt GUL -- kräver upprepning för RÖD enligt gällande hotskala."
+    )
+    assert analysis.parse_adjacent_level(body) == "yellow"
+
+
 def test_parse_adjacent_level_falls_back_to_most_severe_keyword_anywhere():
     """No line literally starts with "Bedömning", but the text still
     mentions a level -- and if it mentions more than one (e.g. describing

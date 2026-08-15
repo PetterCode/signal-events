@@ -523,18 +523,31 @@ def parse_adjacent_level(body: str | None) -> str | None:
     "Bedömning: ..." convention, which real adjacent units aren't
     guaranteed to follow), not a structured field like this unit's own
     threat level. Prefers a line that actually starts with "Bedömning"
-    if there is one (the clearest, most deliberate signal), otherwise
-    falls back to the most severe level keyword mentioned anywhere in
-    the body. Returns None -- not a guess -- when nothing matches at
-    all, so the caller can show "okänd" rather than a fabricated level."""
+    if there is one (the clearest, most deliberate signal) -- and on
+    that line takes whichever level keyword appears *first*, not the
+    most severe one, since a deliberate assessment states its actual
+    conclusion before any further discussion of escalation thresholds
+    ("Bedömning: fortsatt GUL -- kräver upprepning för RÖD" must read as
+    GUL, not RÖD; this app's own threat scale is built around exactly
+    that "a single observation doesn't gate RED, repetition does"
+    distinction, so adjacent units' reports use the same phrasing).
+    Otherwise falls back to the most severe level keyword mentioned
+    anywhere in the body, where there's no such deliberate ordering to
+    trust and erring toward caution is the safer default. Returns None
+    -- not a guess -- when nothing matches at all, so the caller can
+    show "okänd" rather than a fabricated level."""
     if not body:
         return None
     for line in body.splitlines():
         stripped_lower = line.strip().lower()
         if stripped_lower.startswith("bedömning"):
-            for keyword, level in _ADJACENT_LEVEL_KEYWORDS:
-                if keyword in stripped_lower:
-                    return level
+            found = [
+                (stripped_lower.index(keyword), level)
+                for keyword, level in _ADJACENT_LEVEL_KEYWORDS
+                if keyword in stripped_lower
+            ]
+            if found:
+                return min(found)[1]
     lowered = body.lower()
     for keyword, level in _ADJACENT_LEVEL_KEYWORDS:
         if keyword in lowered:
