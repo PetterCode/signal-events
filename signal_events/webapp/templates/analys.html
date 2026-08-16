@@ -46,7 +46,7 @@
 
   <div class="filters">
     Typ:
-    {% for key, label in [(None, "Alla"), ("person", "Personer"), ("vehicle", "Fordon"), ("object", "Objekt")] %}
+    {% for key, label in [(None, "Alla"), ("person", "Personer"), ("vehicle", "Fordon"), ("object", "Objekt"), ("none", "Dölj alla")] %}
       <a href="{{ url_for('events.list_entities', type=key, q=query) }}"
          style="{{ 'font-weight:bold' if entity_type == key else '' }}">{{ label }}</a>
     {% endfor %}
@@ -59,7 +59,11 @@
   </form>
 
   {% if not entities %}
-    <p>Inga poster{{ " som matchar sökningen" if query else "" }}.</p>
+    <p>
+      {% if entity_type == "none" %}Listan är dold.
+      {% else %}Inga poster{{ " som matchar sökningen" if query else "" }}.
+      {% endif %}
+    </p>
   {% else %}
   <table>
     <thead>

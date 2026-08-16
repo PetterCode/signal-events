@@ -3115,6 +3115,19 @@ def test_list_entities_route_shows_created_entities_and_supports_type_filter():
     assert "XYZ999".encode() not in resp_person_only.data
 
 
+def test_list_entities_none_filter_hides_the_whole_table():
+    """"Dölj alla" (type=none) is a filter-only sentinel -- no entity
+    ever has that entity_type -- for collapsing the table on a small
+    screen without leaving the page."""
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X", "marks": "Fordon 1 (R – Registration: HID001)"})
+
+    resp = client.get("/entities?type=none")
+    assert resp.status_code == 200
+    assert "HID001".encode() not in resp.data
+    assert "Listan är dold".encode() in resp.data
+
+
 def test_new_entity_route_creates_a_manual_entity_and_can_link_it_to_an_event():
     client = create_app().test_client()
     client.post("/events/new", data={"place": "X"})

@@ -1434,6 +1434,15 @@ def delete_event(event_id: int):
 _ENTITY_TYPES = ["person", "vehicle", "object"]
 _ENTITY_TYPE_LABELS = {"person": "Person", "vehicle": "Fordon", "object": "Objekt"}
 
+# "none" is a filter-only sentinel for the Typ: links on analys.html's
+# "Dölj alla" option (not a real entity_type value -- see
+# _ENTITY_TYPES/the entities table's CHECK-free but always
+# person/vehicle/object-populated column) -- lets a small screen collapse
+# the whole table down to nothing without leaving the page, same as
+# "Alla" shows everything. Valid as a *filter*, invalid as a value to
+# create/store an entity with, hence the separate list from _ENTITY_TYPES.
+_ENTITY_TYPE_FILTERS = _ENTITY_TYPES + ["none"]
+
 # A person has no registration plate -- these are its structured identity
 # fields instead, stored as attributes JSON keys (same keys entities.py's
 # composer-block parser already produces for auto-extracted persons, see
@@ -1464,10 +1473,18 @@ def _entities_table_context(entity_type: str | None, query: str) -> dict:
     other route's page still shows this section, just in its default
     unfiltered state, since /entities's `q`/`type` and /summary/ai's `q`
     are unrelated search boxes that happen to share a page now, not one
-    shared filter."""
-    with db.get_connection() as conn:
-        rows = db.list_entities(conn, entity_type=entity_type, query=query or None)
-        entities_view = [_entity_view(conn, row) for row in rows]
+    shared filter.
+
+    `entity_type == "none"` (the "Dölj alla" filter link) is a known
+    empty result by construction -- no entity ever has that entity_type
+    -- so it skips the query entirely rather than asking the database
+    for something it can already answer."""
+    if entity_type == "none":
+        entities_view = []
+    else:
+        with db.get_connection() as conn:
+            rows = db.list_entities(conn, entity_type=entity_type, query=query or None)
+            entities_view = [_entity_view(conn, row) for row in rows]
     return {
         "entities": entities_view, "entity_type": entity_type, "query": query,
         "entity_type_labels": _ENTITY_TYPE_LABELS, "recurring_group_name": _recurring_group_name(),
@@ -1477,7 +1494,7 @@ def _entities_table_context(entity_type: str | None, query: str) -> dict:
 @bp.route("/entities")
 def list_entities():
     entity_type = request.args.get("type") or None
-    if entity_type not in _ENTITY_TYPES:
+    if entity_type not in _ENTITY_TYPE_FILTERS:
         entity_type = None
     query = request.args.get("q", "").strip()
 
