@@ -1456,6 +1456,24 @@ def _person_identity_attributes_from_form(existing: dict[str, str] | None = None
     return attributes
 
 
+def _entities_table_context(entity_type: str | None, query: str) -> dict:
+    """Shared by list_entities and summary_ai -- both routes render the
+    same combined "Analys" template (see analys.html), so this is the
+    entities-table half of it. Each route only reads *its own* URL's
+    query params into `entity_type`/`query` (see each call site) -- the
+    other route's page still shows this section, just in its default
+    unfiltered state, since /entities's `q`/`type` and /summary/ai's `q`
+    are unrelated search boxes that happen to share a page now, not one
+    shared filter."""
+    with db.get_connection() as conn:
+        rows = db.list_entities(conn, entity_type=entity_type, query=query or None)
+        entities_view = [_entity_view(conn, row) for row in rows]
+    return {
+        "entities": entities_view, "entity_type": entity_type, "query": query,
+        "entity_type_labels": _ENTITY_TYPE_LABELS, "recurring_group_name": _recurring_group_name(),
+    }
+
+
 @bp.route("/entities")
 def list_entities():
     entity_type = request.args.get("type") or None
@@ -1463,20 +1481,17 @@ def list_entities():
         entity_type = None
     query = request.args.get("q", "").strip()
 
-    with db.get_connection() as conn:
-        rows = db.list_entities(conn, entity_type=entity_type, query=query or None)
-        entities_view = [_entity_view(conn, row) for row in rows]
-
     return render_template(
-        "entities_list.html", entities=entities_view, entity_type=entity_type, query=query,
-        entity_type_labels=_ENTITY_TYPE_LABELS, recurring_group_name=_recurring_group_name(),
+        "analys.html",
+        **_entities_table_context(entity_type, query),
+        **_ai_analys_search_and_chat_context(search_query="", fuzzy=False),
     )
 
 
 @bp.route("/entities/<int:entity_id>/watchlist", methods=["POST"])
 def set_entity_watchlist(entity_id: int):
     """Per-row "Bevaka" checkbox on Personer, fordon och objekt -- each
-    row is its own tiny auto-submitting form (see entities_list.html), so
+    row is its own tiny auto-submitting form (see analys.html), so
     this only ever toggles one entity and redirects back to the same
     filtered/searched view it came from."""
     with db.get_connection() as conn:
@@ -2322,12 +2337,34 @@ _AI_CHAT_MAX_MESSAGES = 12
 _AI_CHAT_FAILED_KEY = "ai_chat_failed"
 
 
+def _ai_analys_search_and_chat_context(search_query: str, fuzzy: bool) -> dict:
+    """The AI-analys half of the combined "Analys" template (see
+    analys.html and _entities_table_context's docstring) -- chat state
+    (session, per browser/user) plus the Snabbsökning exact/fuzzy search
+    results for `search_query`."""
+    history = session.get(_AI_CHAT_SESSION_KEY, [])
+    pending = bool(history) and history[-1]["role"] == "user"
+    with db.get_connection() as conn:
+        search_results = db.search_events(conn, search_query) if search_query else []
+        fuzzy_results = (
+            db.search_events_fuzzy(conn, search_query, exclude_ids=[e["id"] for e in search_results])
+            if search_query and fuzzy else []
+        )
+    return {
+        "chat_history": history, "pending": pending,
+        "failed": pending and session.get(_AI_CHAT_FAILED_KEY, False),
+        "search_query": search_query, "search_results": search_results,
+        "fuzzy": fuzzy, "fuzzy_results": fuzzy_results,
+    }
+
+
 @bp.route("/summary/ai")
 def summary_ai():
-    """Landing page for the "AI-analys" tab: a chat-bot (not a one-shot
-    narrative generator) that can be asked about this unit's saved events
-    and both this unit's and adjacent units' threat-level report history
-    -- see _build_ai_context for exactly what it's given on every turn.
+    """Landing page for the "AI-analys" section of the combined "Analys"
+    tab (see analys.html) -- a chat-bot (not a one-shot narrative
+    generator) that can be asked about this unit's saved events and both
+    this unit's and adjacent units' threat-level report history -- see
+    _build_ai_context for exactly what it's given on every turn.
     Conversation state lives in the session, so it's per browser/user.
 
     Asking a question is split into two requests (see summary_ai_chat and
@@ -2340,24 +2377,22 @@ def summary_ai():
     their question and the reply -- exactly what "the chat disappears
     when I switch tabs" reports were. With the question saved first, at
     worst only the reply is still pending, and this page notices that
-    (`pending` below) and resumes waiting for it automatically."""
-    history = session.get(_AI_CHAT_SESSION_KEY, [])
-    pending = bool(history) and history[-1]["role"] == "user"
+    (`pending` below) and resumes waiting for it automatically.
 
+    /entities and /summary/ai both render the same analys.html template
+    now (see _entities_table_context's docstring for why they stayed two
+    separate routes rather than merging into one) -- this route's own
+    POST handlers (summary_ai_chat/_respond/_clear) still redirect back
+    here specifically, unchanged, since that's still a perfectly valid
+    URL for this content, just no longer the only one or the one linked
+    from the top nav."""
     search_query = request.args.get("q", "").strip()
     fuzzy = bool(request.args.get("fuzzy"))
-    with db.get_connection() as conn:
-        search_results = db.search_events(conn, search_query) if search_query else []
-        fuzzy_results = (
-            db.search_events_fuzzy(conn, search_query, exclude_ids=[e["id"] for e in search_results])
-            if search_query and fuzzy else []
-        )
 
     return render_template(
-        "summary_ai.html", chat_history=history, pending=pending,
-        failed=pending and session.get(_AI_CHAT_FAILED_KEY, False),
-        search_query=search_query, search_results=search_results,
-        fuzzy=fuzzy, fuzzy_results=fuzzy_results,
+        "analys.html",
+        **_ai_analys_search_and_chat_context(search_query, fuzzy),
+        **_entities_table_context(entity_type=None, query=""),
     )
 
 

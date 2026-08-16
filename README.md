@@ -340,7 +340,9 @@ showing up.** Every time an event is saved, its Kännetecken text is
 scanned (`entities.py`, rule-based, offline) for these composer blocks
 and for a bare `Reg.Nr: ...` mention, and each person/vehicle found is
 created (or matched) as its own record on the "Personer, fordon och
-objekt" nav tab and linked to that event. A vehicle is matched **across
+objekt" section of the "Analys" nav tab (combined with AI-analys below
+it — see that section for why) and linked to that event. A vehicle is
+matched **across
 different reports** by its normalized plate — the same real vehicle
 mentioned in three separate sightings becomes one record with three
 linked events, not three unrelated ones. A person found via the
@@ -426,7 +428,9 @@ auto-extraction, tried against the "Plats" and "Anteckningar" fields) is
 also on the "Lägg till händelse manuellt" and "+ Från angränsande enhet"
 forms, so a manually entered report can carry a position too, not just
 Signal-ingested ones.
-The "Kart-vy" nav tab shows every event that has a known position as a
+"Kart-vy" (a button on the Tidslinje page, not its own top-level nav
+tab — moved there to keep the top nav short enough for a small/mobile
+screen) shows every event that has a known position as a
 marker on one map, filtered by the same Tidsperiod selection (24 tim/7
 dagar/30 dagar/Alla) as Sammanställd hotbedömning and Tidslinje — defaults
 to 7 dagar; clicking a marker opens that event. This unit's own events show
@@ -621,8 +625,10 @@ from — there's nothing to configure beyond `--host`:
   login form ever shown, regardless of credentials. Guest accounts are
   for people on your WiFi, not for exposing this over the internet.
 
-**Systemlogg** (its own nav tab, admin-only — hidden from guests and
-rejected outright if a guest requests it directly) records every login,
+**Systemlogg** (a button on Inställningar, not its own top-level nav tab
+— moved there to keep the top nav short enough for a small/mobile
+screen; still admin-only — hidden from guests and rejected outright if
+a guest requests it directly) records every login,
 failed login attempt, logout, server start, and rejected non-private-
 network access attempt, newest first, along with who (name and IP for
 guest events) and when. It also lists which guest accounts have made a
@@ -918,9 +924,13 @@ Ollama: an LLM call here would cost 30-190+ seconds per search (see
 instant, and risks a hallucinated "match" for something security-
 relevant like a vehicle plate.
 
-**AI-analys tab: chat with your own data.** Separate from the CLI's
-one-shot `--narrative` above, the web UI's "AI-analys" tab (its own nav
-item) is a chat-bot backed by the same local Ollama model. Ask it things
+**AI-analys: chat with your own data.** Separate from the CLI's
+one-shot `--narrative` above, the web UI's "AI-analys" section — the
+lower half of the "Analys" nav tab, combined there with "Personer,
+fordon och objekt" above it so the top nav stays short enough for a
+small/mobile screen (both are still reachable at their own URLs too,
+`/entities` and `/summary/ai`, if you land on one directly) — is a
+chat-bot backed by the same local Ollama model. Ask it things
 like "har vi sett den här bilen förut?" or "hur har hotnivån utvecklats
 den senaste månaden?" and it answers grounded in three kinds of stored
 data, rebuilt fresh from the database on every turn so it's never stale:

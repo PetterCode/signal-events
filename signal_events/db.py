@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS entities (
                       -- manual only, never set by entities.py's parser
     watchlist INTEGER NOT NULL DEFAULT 0, -- human-set "include in
                       -- bevakningslista" flag (see
-                      -- webapp/routes.py's entities_list.html checkbox) --
+                      -- webapp/routes.py's analys.html checkbox) --
                       -- included in the sent watchlist report regardless
                       -- of event_count, same as list_watchlist_entities
     source TEXT NOT NULL DEFAULT 'manual', -- 'auto' | 'manual' -- see

@@ -1809,6 +1809,66 @@ def test_settings_page_renders_tak_bridge_group_field():
     assert "TAK-brygga".encode() in resp.data
 
 
+def test_top_nav_no_longer_lists_kart_vy_systemlogg_or_the_two_merged_tabs():
+    """Regression guard for the smaller-screen nav reorg: Kart-vy moved
+    to a button on Tidslinje, Systemlogg moved to a button on
+    Inställningar, and "Personer, fordon och objekt"/"AI-analys" merged
+    into one "Analys" tab (see analys.html) -- none of the old labels
+    should appear inside <nav> anymore."""
+    client = create_app().test_client()
+    resp = client.get("/events")
+    nav_html = resp.data.decode().split("<nav>")[1].split("</nav>")[0]
+
+    assert "Kart-vy" not in nav_html
+    assert "Systemlogg" not in nav_html
+    assert "Personer, fordon och objekt" not in nav_html
+    assert "AI-analys" not in nav_html
+    assert "Analys" in nav_html
+
+
+def test_tidslinje_has_a_kart_vy_button():
+    client = create_app().test_client()
+    resp = client.get("/events")
+    assert resp.status_code == 200
+    assert 'href="/karta"'.encode() in resp.data
+
+
+def test_analys_tab_combines_entities_and_ai_analys_content_from_either_route():
+    """/entities and /summary/ai both render the same combined "Analys"
+    page now (see routes.py's _entities_table_context docstring for why
+    they stayed separate routes) -- either URL must show both halves."""
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X", "marks": "Fordon 1 (R – Registration: QRS111)"})
+
+    for path in ("/entities", "/summary/ai"):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        assert "QRS111".encode() in resp.data  # entities section
+        assert "Snabbsökning".encode() in resp.data  # AI-analys section
+        assert "Skicka till TAK-brygga".encode() not in resp.data  # sanity: not some other page
+
+
+def test_analys_search_boxes_do_not_collide_across_the_merged_sections():
+    """Entities' own filter (type/q on /entities) and AI-analys' own
+    Snabbsökning (q/fuzzy on /summary/ai) are unrelated search boxes
+    that happen to share a page now -- a query on one must not leak into
+    or drive a search in the other."""
+    client = create_app().test_client()
+    client.post("/events/new", data={"place": "X", "marks": "Fordon 1 (R – Registration: QRS222)"})
+
+    # Filtering entities by q= must not also run it as an AI Snabbsökning
+    # search (which would show a "no exact hits" message for it).
+    resp = client.get("/entities?q=QRS222")
+    assert resp.status_code == 200
+    assert "Inga exakta träffar".encode() not in resp.data
+
+    # An AI Snabbsökning search must not filter the entities table.
+    resp = client.get("/summary/ai?q=QRS222")
+    assert resp.status_code == 200
+    assert "QRS222".encode() in resp.data  # present twice: entities row + AI search results
+    assert resp.data.decode().count("QRS222") >= 2
+
+
 def test_send_to_tak_bridge_uses_the_configured_group_name_and_flashes_success():
     from unittest.mock import patch
 
@@ -3040,15 +3100,19 @@ def test_event_detail_page_shows_linked_entities():
 
 
 def test_list_entities_route_shows_created_entities_and_supports_type_filter():
+    # XYZ999, not ABC123 -- the merged Analys page's AI-analys section
+    # (see analys.html) has a static "t.ex. ABC123" placeholder in its
+    # own search box, which would otherwise coincidentally satisfy the
+    # "does NOT contain" assertion below for the wrong reason.
     client = create_app().test_client()
-    client.post("/events/new", data={"place": "X", "marks": "Fordon 1 (R – Registration: ABC123)"})
+    client.post("/events/new", data={"place": "X", "marks": "Fordon 1 (R – Registration: XYZ999)"})
 
     resp = client.get("/entities")
     assert resp.status_code == 200
-    assert "ABC123".encode() in resp.data
+    assert "XYZ999".encode() in resp.data
 
     resp_person_only = client.get("/entities?type=person")
-    assert "ABC123".encode() not in resp_person_only.data
+    assert "XYZ999".encode() not in resp_person_only.data
 
 
 def test_new_entity_route_creates_a_manual_entity_and_can_link_it_to_an_event():

@@ -143,16 +143,20 @@ def test_guest_cannot_reach_the_system_log_tab():
     assert resp.status_code == 403
 
 
-def test_admin_nav_shows_the_system_log_tab_but_guest_nav_does_not():
+def test_settings_page_links_to_system_log_for_admin_but_guests_cannot_reach_either():
+    """Systemlogg moved off the top nav onto Inställningar (a button, see
+    settings.html) -- admins reach it from there; guests can't reach
+    Inställningar at all (admin-only, see _ADMIN_ONLY_ENDPOINTS), so they
+    never see the link regardless of what's on the page."""
     _create_guest()
     client = create_app().test_client()
 
-    admin_resp = client.get("/events")
+    admin_resp = client.get("/settings")
     assert "Systemlogg".encode() in admin_resp.data
 
     _login(client)
-    guest_resp = client.get("/events", environ_overrides={"REMOTE_ADDR": LAN_PEER})
-    assert "Systemlogg".encode() not in guest_resp.data
+    guest_resp = client.get("/settings", environ_overrides={"REMOTE_ADDR": LAN_PEER})
+    assert guest_resp.status_code == 403
 
 
 def test_system_log_records_login_and_shows_the_active_guest():
