@@ -1081,6 +1081,74 @@ def test_search_events_includes_matches_from_adjacent_units():
         assert [r["id"] for r in rows] == [adjacent_id]
 
 
+def test_search_events_fuzzy_finds_a_typo_d_registration_number():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9016, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        match_id = db.insert_event(
+            conn, message_id=message_id, fields={"marks": "Silver Volvo, Reg.nr KRN482"},
+        )
+
+        # One digit off -- a plain LIKE search finds nothing for this.
+        assert db.search_events(conn, "KRN483") == []
+        rows = db.search_events_fuzzy(conn, "KRN483")
+        assert [r["id"] for r in rows] == [match_id]
+
+
+def test_search_events_fuzzy_excludes_ids_the_caller_already_has():
+    """The web UI's "Inkludera nära träffar" list is meant to be
+    additional to the exact search_events results, not a reshuffled
+    duplicate of the same rows."""
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9017, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        exact_id = db.insert_event(conn, message_id=message_id, fields={"marks": "KRN482"})
+        near_id = db.insert_event(conn, message_id=message_id, fields={"marks": "KRN483"})
+
+        rows = db.search_events_fuzzy(conn, "KRN482", exclude_ids=[exact_id])
+        assert [r["id"] for r in rows] == [near_id]
+
+
+def test_search_events_fuzzy_does_not_match_unrelated_text():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9018, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db.insert_event(conn, message_id=message_id, fields={"place": "Norra grinden"})
+
+        assert db.search_events_fuzzy(conn, "KRN482") == []
+
+
+def test_search_events_fuzzy_returns_no_results_for_a_blank_query():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9019, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db.insert_event(conn, message_id=message_id, fields={"place": "Norra grinden"})
+
+        assert db.search_events_fuzzy(conn, "") == []
+        assert db.search_events_fuzzy(conn, "   ") == []
+
+
+def test_search_events_fuzzy_ranks_the_closest_match_first():
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9020, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        close_id = db.insert_event(conn, message_id=message_id, fields={"marks": "KRN482"})
+        farther_id = db.insert_event(conn, message_id=message_id, fields={"marks": "KRQ489"})
+
+        rows = db.search_events_fuzzy(conn, "KRN483")
+        assert [r["id"] for r in rows] == [close_id, farther_id]
+
+
 def test_list_events_with_position_include_adjacent_false_excludes_adjacent_events():
     with db.get_connection() as conn:
         message_id = db.insert_message(

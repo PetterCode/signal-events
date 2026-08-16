@@ -10,6 +10,33 @@
     svaren speglar alltid det som är sparat just nu.
   </p>
 
+  {% macro event_results_table(events) %}
+    <table>
+      <thead>
+        <tr>
+          <th>TNR</th><th>Tid</th><th>Plats</th><th>Objekt</th><th>Kännetecken</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events %}
+          <tr>
+            <td class="mono">{{ event_tnr(event.created_at) }}</td>
+            <td>{{ event.event_time or "—" }}</td>
+            <td>{{ event.place or "—" }}</td>
+            <td>{{ event.object or "—" }}</td>
+            <td>{{ event.marks or "—" }}</td>
+            <td>
+              <a href="{{ url_for('events.event_detail', event_id=event.id) }}">Öppna</a>
+              {% if event.source_unit %}
+                <span class="badge badge-adjacent">från {{ event.source_unit }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endmacro %}
+
   <div class="card">
     <h3>Snabbsökning</h3>
     <p style="font-size:0.85rem;color:#666">
@@ -25,36 +52,33 @@
                placeholder="t.ex. ABC123" style="width:auto;flex:1;margin-top:0">
         <button type="submit" class="btn-secondary">Sök</button>
       </div>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;color:#666;margin-top:0.5rem">
+        <input type="checkbox" name="fuzzy" value="1" {{ "checked" if fuzzy }}
+               style="width:auto;margin:0" onchange="this.form.requestSubmit()">
+        Inkludera nära träffar (stavfel, feltolkat registreringsnummer m.m.)
+      </label>
     </form>
 
     {% if search_query %}
       {% if not search_results %}
-        <p style="color:#666">Inga träffar för &quot;{{ search_query }}&quot;.</p>
+        <p style="color:#666">Inga exakta träffar för &quot;{{ search_query }}&quot;.</p>
       {% else %}
-        <table>
-          <thead>
-            <tr>
-              <th>TNR</th><th>Tid</th><th>Plats</th><th>Objekt</th><th>Kännetecken</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for event in search_results %}
-              <tr>
-                <td class="mono">{{ event_tnr(event.created_at) }}</td>
-                <td>{{ event.event_time or "—" }}</td>
-                <td>{{ event.place or "—" }}</td>
-                <td>{{ event.object or "—" }}</td>
-                <td>{{ event.marks or "—" }}</td>
-                <td>
-                  <a href="{{ url_for('events.event_detail', event_id=event.id) }}">Öppna</a>
-                  {% if event.source_unit %}
-                    <span class="badge badge-adjacent">från {{ event.source_unit }}</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        {{ event_results_table(search_results) }}
+      {% endif %}
+
+      {% if fuzzy %}
+        <h3 style="margin-top:1.5rem">Nära träffar</h3>
+        <p style="font-size:0.85rem;color:#666">
+          Liknande men inte identisk text (stavfel, OCR-fel i ett
+          registreringsnummer, ett bokstaveringsfel) &mdash; inte en
+          AI-tolkning, bara teckenlikhet, så en synonym eller
+          omskrivning hittas inte här.
+        </p>
+        {% if not fuzzy_results %}
+          <p style="color:#666">Inga nära träffar för &quot;{{ search_query }}&quot;.</p>
+        {% else %}
+          {{ event_results_table(fuzzy_results) }}
+        {% endif %}
       {% endif %}
     {% endif %}
   </div>

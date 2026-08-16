@@ -3,5 +3,6 @@ reportlab>=4.0,<5
 Pillow>=10.0
 qrcode>=7.0,<8
 mgrs>=1.5,<2
+rapidfuzz>=3.0,<4
 certifi
 pytest>=8.0,<9

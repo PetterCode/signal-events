@@ -507,6 +507,57 @@ def search_events(conn: sqlite3.Connection, query: str, limit: int = 50) -> list
     ).fetchall()
 
 
+# Fields checked by both search_events and search_events_fuzzy, in the
+# order their text is tried per event for a match.
+_SEARCH_FIELDS = ("place", "object", "activity", "marks", "reported_by", "next_steps", "raw_text")
+
+_FUZZY_SCORE_CUTOFF = 70.0
+
+
+def search_events_fuzzy(
+    conn: sqlite3.Connection, query: str, limit: int = 20, exclude_ids: Iterable[int] = (),
+) -> list[sqlite3.Row]:
+    """Near-match companion to search_events, for the AI-analys search
+    box's "Inkludera nära träffar" toggle -- catches a typo'd/OCR'd
+    registration plate or a misspelled place name that a plain LIKE
+    lookup finds nothing for (e.g. "ABC124" vs a logged "ABC123").
+    Despite living next to the AI chat feature, this is still not an LLM
+    call: rapidfuzz's partial_ratio is a fast, deterministic, fully
+    offline character-level similarity score (no network, no risk of a
+    hallucinated match), unlike routing this through Ollama, which would
+    cost 30-190+ seconds per search (see llm.OLLAMA_TIMEOUT_SECONDS) for
+    something a user expects to be near-instant. partial_ratio (rather
+    than plain ratio) is what makes this work for a short query against
+    a long field like raw_text -- it scores the best-aligned substring,
+    not the whole field's length against the query's.
+
+    Scans every event in the database (fine at this app's scale -- a
+    laptop-local tool, and rapidfuzz's C implementation handles
+    thousands of rows well under a second) and keeps the ones whose best
+    field match scores at least _FUZZY_SCORE_CUTOFF, ranked highest
+    first. `exclude_ids` lets the caller drop whatever search_events
+    already returned, so this is genuinely an *additional* "did you
+    mean" list, not the same rows reshuffled."""
+    from rapidfuzz import fuzz
+
+    query = query.strip()
+    if not query:
+        return []
+    exclude = set(exclude_ids)
+    scored: list[tuple[float, sqlite3.Row]] = []
+    for row in conn.execute("SELECT * FROM events"):
+        if row["id"] in exclude:
+            continue
+        best = max(
+            (fuzz.partial_ratio(query, row[field]) for field in _SEARCH_FIELDS if row[field]),
+            default=0.0,
+        )
+        if best >= _FUZZY_SCORE_CUTOFF:
+            scored.append((best, row))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [row for _, row in scored[:limit]]
+
+
 def list_events_with_position(
     conn: sqlite3.Connection, since: Optional[str] = None, include_adjacent: bool = True
 ) -> list[sqlite3.Row]:

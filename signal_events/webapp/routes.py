@@ -2308,13 +2308,19 @@ def summary_ai():
     pending = bool(history) and history[-1]["role"] == "user"
 
     search_query = request.args.get("q", "").strip()
+    fuzzy = bool(request.args.get("fuzzy"))
     with db.get_connection() as conn:
         search_results = db.search_events(conn, search_query) if search_query else []
+        fuzzy_results = (
+            db.search_events_fuzzy(conn, search_query, exclude_ids=[e["id"] for e in search_results])
+            if search_query and fuzzy else []
+        )
 
     return render_template(
         "summary_ai.html", chat_history=history, pending=pending,
         failed=pending and session.get(_AI_CHAT_FAILED_KEY, False),
         search_query=search_query, search_results=search_results,
+        fuzzy=fuzzy, fuzzy_results=fuzzy_results,
     )
 
 

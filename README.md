@@ -874,6 +874,21 @@ ollama pull llama3.1               # one-time download, tags as llama3.1:latest
 python -m signal_events summary --since 7d --llm --format pdf --output summary.pdf
 ```
 
+**Snabbsökning: plain and near-match search.** The AI-analys tab also
+has a quick search box above the chat, unrelated to the LLM — a plain
+SQL `LIKE` lookup across plats/objekt/aktivitet/kännetecken/rapporterad
+av/nästa steg/originaltext, instant and exact, for finding a known
+registration number or keyword. "Inkludera nära träffar" adds a second,
+still fully offline pass using `rapidfuzz` (character-level similarity,
+not the LLM) to also surface near-misses the exact search wouldn't —
+a typo'd or OCR'd plate, a misspelled place name — ranked by how close
+the match is, and excluding whatever the exact search already found so
+it's a genuinely additional list. It's deliberately not routed through
+Ollama: an LLM call here would cost 30-190+ seconds per search (see
+`OLLAMA_TIMEOUT_SECONDS` below) for something that should feel
+instant, and risks a hallucinated "match" for something security-
+relevant like a vehicle plate.
+
 **AI-analys tab: chat with your own data.** Separate from the CLI's
 one-shot `--narrative` above, the web UI's "AI-analys" tab (its own nav
 item) is a chat-bot backed by the same local Ollama model. Ask it things

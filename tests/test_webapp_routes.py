@@ -1357,7 +1357,7 @@ def test_summary_ai_search_shows_no_hits_message_for_an_unmatched_query():
     resp = client.get("/summary/ai?q=NOSUCHPLATE")
 
     assert resp.status_code == 200
-    assert "Inga träffar".encode() in resp.data
+    assert "Inga exakta träffar".encode() in resp.data
 
 
 def test_summary_ai_search_box_is_empty_with_no_query():
@@ -1365,7 +1365,58 @@ def test_summary_ai_search_box_is_empty_with_no_query():
     resp = client.get("/summary/ai")
 
     assert resp.status_code == 200
-    assert b"Inga tr\xc3\xa4ffar" not in resp.data
+    assert b"Inga exakta tr\xc3\xa4ffar" not in resp.data
+
+
+def test_summary_ai_search_fuzzy_toggle_off_by_default_hides_near_matches():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        db_module.insert_event(conn, message_id=message_id, fields={"marks": "KRN482"})
+
+    client = create_app().test_client()
+    resp = client.get("/summary/ai?q=KRN483")
+
+    assert resp.status_code == 200
+    assert b"KRN482" not in resp.data
+    assert "Nära träffar".encode() not in resp.data
+
+
+def test_summary_ai_search_fuzzy_toggle_on_finds_a_near_match_without_calling_the_llm():
+    from unittest.mock import patch
+
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        db_module.insert_event(conn, message_id=message_id, fields={"marks": "KRN482"})
+
+    client = create_app().test_client()
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        resp = client.get("/summary/ai?q=KRN483&fuzzy=1")
+
+    mock_urlopen.assert_not_called()
+    assert resp.status_code == 200
+    assert b"KRN482" in resp.data
+    assert "Nära träffar".encode() in resp.data
+
+
+def test_summary_ai_search_fuzzy_does_not_repeat_an_exact_match():
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        db_module.insert_event(conn, message_id=message_id, fields={"marks": "KRN482"})
+
+    client = create_app().test_client()
+    resp = client.get("/summary/ai?q=KRN482&fuzzy=1")
+
+    assert resp.status_code == 200
+    assert "Inga nära träffar".encode() in resp.data
 
 
 def test_summary_ai_chat_saves_the_question_immediately_without_calling_ollama():
