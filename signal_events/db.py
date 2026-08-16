@@ -544,7 +544,17 @@ def search_events_fuzzy(
     something a user expects to be near-instant. partial_ratio (rather
     than plain ratio) is what makes this work for a short query against
     a long field like raw_text -- it scores the best-aligned substring,
-    not the whole field's length against the query's.
+    not the whole field's length against the query's. `processor=
+    utils.default_process` lowercases and normalizes whitespace/
+    punctuation before comparing -- without it, a lowercase query like
+    "qah456" scores far below the cutoff against a stored "...QAB456..."
+    purely because every letter differs in case, even though the actual
+    registration-plate text is a one-character typo away (regression:
+    this made "Inkludera nära träffar" find nothing for exactly the kind
+    of near-miss it exists for, whenever the user's query case didn't
+    happen to match the stored text's case -- search_events' plain SQL
+    LIKE is case-insensitive by default, so this only ever showed up on
+    the fuzzy path).
 
     Scans every event in the database (fine at this app's scale -- a
     laptop-local tool, and rapidfuzz's C implementation handles
@@ -553,7 +563,7 @@ def search_events_fuzzy(
     first. `exclude_ids` lets the caller drop whatever search_events
     already returned, so this is genuinely an *additional* "did you
     mean" list, not the same rows reshuffled."""
-    from rapidfuzz import fuzz
+    from rapidfuzz import fuzz, utils
 
     query = query.strip()
     if not query:
@@ -564,7 +574,10 @@ def search_events_fuzzy(
         if row["id"] in exclude:
             continue
         best = max(
-            (fuzz.partial_ratio(query, row[field]) for field in _SEARCH_FIELDS if row[field]),
+            (
+                fuzz.partial_ratio(query, row[field], processor=utils.default_process)
+                for field in _SEARCH_FIELDS if row[field]
+            ),
             default=0.0,
         )
         if best >= _FUZZY_SCORE_CUTOFF:

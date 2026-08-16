@@ -1097,6 +1097,31 @@ def test_search_events_fuzzy_finds_a_typo_d_registration_number():
         assert [r["id"] for r in rows] == [match_id]
 
 
+def test_search_events_fuzzy_is_case_insensitive():
+    """Regression: a lowercase query against a stored uppercase
+    registration plate (the normal case -- users type lowercase, plates
+    are logged uppercase) used to score far below the cutoff purely
+    because every letter differed in case, even for a one-character
+    typo that should score very high -- fuzz.partial_ratio needs
+    processor=utils.default_process to normalize case first, unlike
+    search_events' plain SQL LIKE which is already case-insensitive."""
+    with db.get_connection() as conn:
+        message_id = db.insert_message(
+            conn, signal_timestamp=9021, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        match_id = db.insert_event(
+            conn, message_id=message_id,
+            fields={"marks": "Fordon 1 (S – Size: Mellanstor skåpbil, R – Registration: QAB456)"},
+        )
+
+        # "qah456" is a one-character typo of QAB456 -- lowercase query,
+        # uppercase stored plate, exactly the normal real-world case.
+        assert db.search_events(conn, "qah456") == []
+        rows = db.search_events_fuzzy(conn, "qah456")
+        assert [r["id"] for r in rows] == [match_id]
+
+
 def test_search_events_fuzzy_excludes_ids_the_caller_already_has():
     """The web UI's "Inkludera nära träffar" list is meant to be
     additional to the exact search_events results, not a reshuffled
