@@ -60,7 +60,7 @@
   </div>
 
   <div class="card">
-    <div class="chat-log">
+    <div class="chat-log" id="chat-log">
       {% if not chat_history %}
         <p class="chat-empty">
           Inget skrivet ännu &mdash; ställ en fråga nedan, t.ex. "Har vi sett
@@ -68,7 +68,7 @@
           senaste månaden?".
         </p>
       {% endif %}
-      {% for message in chat_history|reverse %}
+      {% for message in chat_history %}
         <div class="chat-message chat-message-{{ message.role }}">
           <span class="chat-message-role">{{ "Du" if message.role == "user" else "AI-analys" }}</span>
           {{ message.content }}
@@ -78,6 +78,13 @@
         <p class="chat-empty">AI-analys tänker... (kan ta upp till någon minut)</p>
       {% endif %}
     </div>
+    <script>
+      // Messages render oldest-first like any normal chat -- jump straight
+      // to the newest one (and the input box right below it) on load
+      // instead of leaving the page scrolled to the top of the whole
+      // conversation, same as every chat app does.
+      document.getElementById("chat-log").lastElementChild?.scrollIntoView();
+    </script>
 
     {% if pending %}
       {% if failed %}
