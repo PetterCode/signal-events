@@ -131,7 +131,7 @@ def _own_sync_message_group_id(inner: dict[str, Any]) -> Optional[str]:
 
 def ingest_envelope(
     conn: sqlite3.Connection, envelope: dict[str, Any], group_id: Optional[str] = None,
-    is_sensor: bool = False,
+    is_sensor: bool = False, is_tak_bridge: bool = False,
 ) -> bool:
     """Store one envelope's data message (if any) and its attachments/parsed
     fields. Returns True if a new message was ingested.
@@ -143,7 +143,14 @@ def ingest_envelope(
     resulting event so duplicates.py never evaluates it: an automated
     sensor gateway firing the same templated message at the same place
     repeatedly is expected, and each trigger is a genuine, separate
-    occurrence, not a person accidentally filing the same report twice."""
+    occurrence, not a person accidentally filing the same report twice.
+
+    `is_tak_bridge=True` (see watch_multi's TAK-bridge-group call) only
+    tags the resulting event for display/provenance (event_detail.html
+    shows "Mottaget via TAK-brygga") -- unlike is_sensor it does *not*
+    exempt the event from duplicates.py, since a report relayed from an
+    ATAK operator is a normal one-off human observation, not a repeating
+    automated trigger."""
     inner = envelope.get("envelope", envelope)
     data_message = inner.get("dataMessage")
     if not data_message:
@@ -182,6 +189,7 @@ def ingest_envelope(
     reported_by = sender_name or sender_number
     fields = parser.parse_event_fields(body, reported_by=reported_by)
     fields["is_sensor"] = is_sensor
+    fields["is_tak_bridge"] = is_tak_bridge
     event_id = db.insert_event(conn, message_id=message_id, fields=fields)
     entities.sync_event_entities(conn, event_id)
     return True
@@ -457,22 +465,27 @@ def watch_multi(
     incident_group_name: str,
     adjacent_group_name: str,
     sensor_group_name: str,
+    tak_bridge_group_name: str,
     poll_timeout_seconds: int = 20,
     max_iterations: Optional[int] = None,
     retry_delay_seconds: float = _WATCH_RETRY_DELAY_SECONDS,
-) -> Iterator[tuple[int, int, int]]:
-    """Resolve all three group names to ids once, then repeatedly long-poll
+) -> Iterator[tuple[int, int, int, int]]:
+    """Resolve all four group names to ids once, then repeatedly long-poll
     signal-cli for new messages -- deliberately a *single* `receive` call
-    per cycle covering all three groups (running multiple concurrent
+    per cycle covering all four groups (running multiple concurrent
     signal-cli processes against the same linked account can corrupt its
     local state), routing each incoming envelope to the right store based
     on which group it was posted to. Sensor-trigger events are parsed and
     stored exactly like human incident reports (see ingest_envelope) --
     same 7S format, just a separate source group -- so they show up in
-    the same event log as everything else. Yields (incident_count,
-    adjacent_count, sensor_count) after each poll cycle. Runs until
-    `max_iterations` polls have completed, or forever if None (the caller
-    stops it, e.g. on Ctrl+C).
+    the same event log as everything else. The TAK-bridge group is the
+    inbound half of the Signal-based ATAK bridge (see
+    config.TAK_BRIDGE_GROUP_NAME): a future TAK-side plugin relays ATAK
+    GeoChat messages here as plain text, parsed the same way. Yields
+    (incident_count, adjacent_count, sensor_count, tak_bridge_count)
+    after each poll cycle. Runs until `max_iterations` polls have
+    completed, or forever if None (the caller stops it, e.g. on
+    Ctrl+C).
 
     A single bad cycle -- a transient network blip, signal-cli briefly
     failing, an unexpected error from ingestion -- no longer kills the
@@ -500,6 +513,7 @@ def watch_multi(
     incident_group_id = find_group_id_by_name(incident_group_name)
     adjacent_group_id = find_group_id_by_name(adjacent_group_name)
     sensor_group_id = find_group_id_by_name(sensor_group_name)
+    tak_bridge_group_id = find_group_id_by_name(tak_bridge_group_name)
     iterations = 0
     was_erroring = False
     while max_iterations is None or iterations < max_iterations:
@@ -508,6 +522,7 @@ def watch_multi(
             incident_count = 0
             adjacent_count = 0
             sensor_count = 0
+            tak_bridge_count = 0
             with db.get_connection() as conn:
                 for envelope in envelopes:
                     if ingest_envelope(conn, envelope, group_id=incident_group_id):
@@ -516,6 +531,8 @@ def watch_multi(
                         adjacent_count += 1
                     if ingest_envelope(conn, envelope, group_id=sensor_group_id, is_sensor=True):
                         sensor_count += 1
+                    if ingest_envelope(conn, envelope, group_id=tak_bridge_group_id, is_tak_bridge=True):
+                        tak_bridge_count += 1
                     inner = envelope.get("envelope", envelope)
                     if _own_sync_message_group_id(inner) == incident_group_id:
                         db.log_system_event(
@@ -535,14 +552,14 @@ def watch_multi(
                     )
                     was_erroring = False
         except Exception as exc:
-            incident_count = adjacent_count = sensor_count = 0
+            incident_count = adjacent_count = sensor_count = tak_bridge_count = 0
             with db.get_connection() as conn:
                 db.record_receive_attempt(conn, error=str(exc))
                 if not was_erroring:
                     db.log_system_event(conn, "watch_error", str(exc))
                     was_erroring = True
             time.sleep(retry_delay_seconds)
-        yield incident_count, adjacent_count, sensor_count
+        yield incident_count, adjacent_count, sensor_count, tak_bridge_count
         iterations += 1
 
 

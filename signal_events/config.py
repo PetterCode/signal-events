@@ -119,6 +119,19 @@ SENSOR_GROUP_NAME = os.environ.get(
     "SIGNAL_EVENTS_SENSOR_GROUP", "Stabsassistent test-sensorer"
 )
 
+# Signal group used as the bridge to/from a TAK Server: a future TAK-side
+# plugin (not part of this app) holds its own Signal identity in this
+# group, translating between CoT and plain-text reports in both
+# directions -- inbound ATAK GeoChat messages arrive here and are parsed
+# the same 7S/free-text way as any other incoming report; outbound, the
+# "Skicka till TAK-brygga" button on an event sends its summary here for
+# that plugin to turn into a CoT marker. All the CoT/TLS/plugin-specific
+# work deliberately lives outside this app -- see webapp/routes.py's
+# send_to_tak_bridge docstring for why.
+TAK_BRIDGE_GROUP_NAME = os.environ.get(
+    "SIGNAL_EVENTS_TAK_BRIDGE_GROUP", "Stabsassistent test-tak"
+)
+
 # Fallback (lat, lon) used wherever a map needs a center point but
 # Inställningar's Kartcentrum hasn't been set yet -- Stockholm Palace
 # (Kungliga slottet), Gamla Stan (59°19'37"N 18°04'17"E). Only ever a

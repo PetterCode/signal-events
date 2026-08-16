@@ -1777,7 +1777,7 @@ def test_demo_clear_route_leaves_non_demo_events_untouched():
         assert db_module.get_event(conn, event_id) is not None
 
 
-def test_save_groups_route_persists_all_four_group_names():
+def test_save_groups_route_persists_all_five_group_names():
     client = create_app().test_client()
     resp = client.post(
         "/settings/groups",
@@ -1786,6 +1786,7 @@ def test_save_groups_route_persists_all_four_group_names():
             "report_group": "Ny rapportgrupp",
             "recurring_group": "Ny återkommande-grupp",
             "sensor_group": "Ny sensorgrupp",
+            "tak_bridge_group": "Ny TAK-brygga",
         },
         follow_redirects=True,
     )
@@ -1796,6 +1797,68 @@ def test_save_groups_route_persists_all_four_group_names():
         assert db_module.get_report_group_name(conn) == "Ny rapportgrupp"
         assert db_module.get_recurring_group_name(conn) == "Ny återkommande-grupp"
         assert db_module.get_sensor_group_name(conn) == "Ny sensorgrupp"
+        assert db_module.get_tak_bridge_group_name(conn) == "Ny TAK-brygga"
+
+
+def test_settings_page_renders_tak_bridge_group_field():
+    client = create_app().test_client()
+    resp = client.get("/settings")
+
+    assert resp.status_code == 200
+    assert b"tak_bridge_group" in resp.data
+    assert "TAK-brygga".encode() in resp.data
+
+
+def test_send_to_tak_bridge_uses_the_configured_group_name_and_flashes_success():
+    from unittest.mock import patch
+
+    from signal_events import signal_client
+
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        event_id = db_module.insert_event(conn, message_id=message_id, fields={"place": "Norra grinden"})
+        db_module.set_tak_bridge_group_name(conn, "Anpassad TAK-brygga")
+
+    client = create_app().test_client()
+    with patch.object(signal_client, "send_to_group_by_name") as mock_send:
+        resp = client.post(f"/events/{event_id}/send-tak-bridge", follow_redirects=True)
+
+    assert resp.status_code == 200
+    mock_send.assert_called_once()
+    assert mock_send.call_args.args[0] == "Anpassad TAK-brygga"
+    assert "skickad till TAK-bryggan".encode() in resp.data
+
+
+def test_send_to_tak_bridge_flashes_error_on_signal_cli_error():
+    from unittest.mock import patch
+
+    from signal_events import signal_client
+
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=1, sender_number=None, sender_name=None,
+            body="text", raw_json="{}",
+        )
+        event_id = db_module.insert_event(conn, message_id=message_id, fields={"place": "Norra grinden"})
+
+    client = create_app().test_client()
+    with patch.object(
+        signal_client, "send_to_group_by_name",
+        side_effect=signal_client.SignalCliError("no network"),
+    ):
+        resp = client.post(f"/events/{event_id}/send-tak-bridge", follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "Kunde inte skicka till TAK-bryggan".encode() in resp.data
+
+
+def test_send_to_tak_bridge_404_for_unknown_event():
+    client = create_app().test_client()
+    resp = client.post("/events/999999/send-tak-bridge")
+    assert resp.status_code == 404
 
 
 def test_save_ollama_port_route_persists_a_valid_port():

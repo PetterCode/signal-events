@@ -21,6 +21,9 @@
   {% if event.is_important %}
     <p class="badge badge-important">Hög vikt &mdash; manuellt markerad</p>
   {% endif %}
+  {% if event.is_tak_bridge %}
+    <p class="badge badge-adjacent">Mottagen via TAK-brygga (relästa från ATAK)</p>
+  {% endif %}
 
   <div class="card">
     <h3>
@@ -216,6 +219,18 @@
       <div class="actions">
         <button type="submit">Spara</button>
       </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>TAK-brygga</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Skickar en sammanfattning av händelsen till Signal-gruppen som
+      kopplar ihop appen med en TAK Server &mdash; en framtida TAK-sida-
+      plugin omvandlar den till en CoT-markör synlig för ATAK-klienter.
+    </p>
+    <form method="post" action="{{ url_for('events.send_to_tak_bridge', event_id=event.id) }}" style="display:inline">
+      <button type="submit" class="btn-secondary">Skicka till TAK-brygga</button>
     </form>
   </div>
 

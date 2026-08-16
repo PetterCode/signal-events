@@ -408,6 +408,7 @@ def settings():
         report_group = db.get_report_group_name(conn)
         recurring_group = db.get_recurring_group_name(conn)
         sensor_group = db.get_sensor_group_name(conn)
+        tak_bridge_group = db.get_tak_bridge_group_name(conn)
         ollama_port = db.get_ollama_port(conn)
         users = db.list_users(conn)
         map_center = db.get_map_center(conn)
@@ -436,7 +437,8 @@ def settings():
         reports_dir=str(reports_dir), reports_dir_is_default=reports_dir == config.REPORTS_DIR,
         adjacent_units=adjacent_units, watch_group=watch_group,
         report_group=report_group, recurring_group=recurring_group,
-        sensor_group=sensor_group, ollama_port=ollama_port, users=users,
+        sensor_group=sensor_group, tak_bridge_group=tak_bridge_group,
+        ollama_port=ollama_port, users=users,
         lan_url=_lan_url(),
         map_center=map_center, map_center_mgrs=map_center_mgrs,
         map_center_is_custom=map_center_is_custom,
@@ -486,6 +488,7 @@ def save_groups():
         db.set_report_group_name(conn, request.form.get("report_group", ""))
         db.set_recurring_group_name(conn, request.form.get("recurring_group", ""))
         db.set_sensor_group_name(conn, request.form.get("sensor_group", ""))
+        db.set_tak_bridge_group_name(conn, request.form.get("tak_bridge_group", ""))
     flash("Signal-grupper sparade.")
     return redirect(url_for("events.settings"))
 
@@ -1745,6 +1748,40 @@ def _send_pdf_to_group(buf: io.BytesIO, caption: str, group_name: str, filename:
         signal_client.send_to_group_by_name(
             group_name, message=caption, attachment_paths=[str(tmp_path)]
         )
+
+
+@bp.route("/events/<int:event_id>/send-tak-bridge", methods=["POST"])
+def send_to_tak_bridge(event_id: int):
+    """Sends one event's summary to the TAK-brygga Signal group -- the
+    outbound half of the Signal-based ATAK bridge (see
+    db.get_tak_bridge_group_name). A future TAK-side plugin watching that
+    group is what actually turns this into a CoT marker on ATAK clients;
+    this app's own job ends at "post a clear, single-event summary to the
+    right group," same as every other Skicka-to-Signal action already
+    does -- reuses render_pdf/_send_pdf_to_group exactly as report_send
+    does, just for one event instead of a whole period."""
+    with db.get_connection() as conn:
+        event = db.get_event(conn, event_id)
+        if event is None:
+            abort(404)
+        message = db.get_message(conn, event["message_id"])
+        attachments = db.list_attachments_for_message(conn, event["message_id"])
+        group_name = db.get_tak_bridge_group_name(conn)
+
+    tnr = naming.event_tnr(event["created_at"])
+    buf = generator.render_pdf(
+        [{"event": event, "message": message, "attachments": attachments}],
+        since_label=f"Händelse {tnr}",
+    )
+    filename = naming.build_report_filename(_unit_name(), "tak-brygga", "pdf")
+    caption = f"Händelse {tnr} – {config.SITE_NAME}"
+    try:
+        _send_pdf_to_group(buf, caption, group_name, filename)
+    except signal_client.SignalCliError as exc:
+        flash(f"Kunde inte skicka till TAK-bryggan: {exc}", "error")
+    else:
+        flash(f"Händelsen skickad till TAK-bryggan ('{group_name}').")
+    return redirect(url_for("events.event_detail", event_id=event_id))
 
 
 @bp.route("/report/send", methods=["POST"])

@@ -117,18 +117,25 @@ def _resolve_sensor_group() -> str:
         return db.get_sensor_group_name(conn)
 
 
+def _resolve_tak_bridge_group() -> str:
+    with db.get_connection() as conn:
+        return db.get_tak_bridge_group_name(conn)
+
+
 def _run_watch_loop(incident_group: str, poll_timeout: int, prefix: str = "") -> None:
     """Shared loop used by both `signal-events watch` and `serve --watch`.
     Polls the incident-intake group, the report group (which doubles as
     the adjacent-units exchange channel -- see db.get_report_group_name),
-    and the sensor group (automated sensor-trigger events, parsed and
-    stored the same way as human incident reports -- see
-    db.get_sensor_group_name) in a single signal-cli receive call per
-    cycle (see signal_client.watch_multi). Prints progress so it's
-    obvious the poller is alive even when nothing new has arrived (silent
-    long-running processes are hard to trust). All three group names are
-    resolved once, here, at the start of the loop -- a later change on
-    Inställningar only takes effect on the next restart of this loop.
+    the sensor group (automated sensor-trigger events, parsed and stored
+    the same way as human incident reports -- see db.get_sensor_group_name),
+    and the TAK-bridge group (the inbound half of the Signal-based ATAK
+    bridge -- see db.get_tak_bridge_group_name) in a single signal-cli
+    receive call per cycle (see signal_client.watch_multi). Prints
+    progress so it's obvious the poller is alive even when nothing new
+    has arrived (silent long-running processes are hard to trust). All
+    four group names are resolved once, here, at the start of the loop
+    -- a later change on Inställningar only takes effect on the next
+    restart of this loop.
 
     Since signal_client.watch_multi now retries a failing cycle instead
     of raising (see its own docstring), a stuck failure would otherwise
@@ -140,20 +147,23 @@ def _run_watch_loop(incident_group: str, poll_timeout: int, prefix: str = "") ->
 
     adjacent_group = _resolve_report_group()
     sensor_group = _resolve_sensor_group()
+    tak_bridge_group = _resolve_tak_bridge_group()
     print(
         f"{prefix}Bevakar Signal-grupperna '{incident_group}' (händelser), "
-        f"'{adjacent_group}' (rapport-gruppen, för angränsande enheters status) och "
-        f"'{sensor_group}' (sensorgruppen, för automatiska sensorhändelser)..."
+        f"'{adjacent_group}' (rapport-gruppen, för angränsande enheters status), "
+        f"'{sensor_group}' (sensorgruppen, för automatiska sensorhändelser) och "
+        f"'{tak_bridge_group}' (TAK-bryggan, för rapporter relästa från ATAK)..."
     )
     with db.get_connection() as conn:
         db.log_system_event(
             conn, "watch_started",
-            f"incident={incident_group!r} adjacent={adjacent_group!r} sensor={sensor_group!r}",
+            f"incident={incident_group!r} adjacent={adjacent_group!r} "
+            f"sensor={sensor_group!r} tak_bridge={tak_bridge_group!r}",
         )
     silent_polls = 0
     was_erroring = False
-    for incident_count, adjacent_count, sensor_count in signal_client.watch_multi(
-        incident_group, adjacent_group, sensor_group, poll_timeout_seconds=poll_timeout
+    for incident_count, adjacent_count, sensor_count, tak_bridge_count in signal_client.watch_multi(
+        incident_group, adjacent_group, sensor_group, tak_bridge_group, poll_timeout_seconds=poll_timeout
     ):
         with db.get_connection() as conn:
             current_error = db.get_last_receive_error(conn)
@@ -166,7 +176,7 @@ def _run_watch_loop(incident_group: str, poll_timeout: int, prefix: str = "") ->
             print(f"{prefix}signal-cli receive fungerar igen.")
             was_erroring = False
 
-        if incident_count or adjacent_count or sensor_count:
+        if incident_count or adjacent_count or sensor_count or tak_bridge_count:
             if incident_count:
                 print(f"{prefix}Hämtade {incident_count} ny(a) rapport(er) från '{incident_group}'.")
             if adjacent_count:
@@ -177,6 +187,10 @@ def _run_watch_loop(incident_group: str, poll_timeout: int, prefix: str = "") ->
             if sensor_count:
                 print(
                     f"{prefix}Hämtade {sensor_count} sensorhändelse(r) från '{sensor_group}'."
+                )
+            if tak_bridge_count:
+                print(
+                    f"{prefix}Hämtade {tak_bridge_count} rapport(er) från TAK-bryggan ('{tak_bridge_group}')."
                 )
             silent_polls = 0
         elif not current_error:

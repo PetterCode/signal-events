@@ -55,6 +55,16 @@ CREATE TABLE IF NOT EXISTS events (
                                               -- auto-classifier like
                                               -- is_trivial/is_duplicate
     is_sensor INTEGER NOT NULL DEFAULT 0,
+    is_tak_bridge INTEGER NOT NULL DEFAULT 0, -- ingested from the TAK
+                                               -- bridge group (see
+                                               -- config.TAK_BRIDGE_GROUP_NAME)
+                                               -- rather than exempted
+                                               -- from duplicates.py like
+                                               -- is_sensor is -- a human-
+                                               -- originated ATAK report
+                                               -- is a one-off observation
+                                               -- like any other, not a
+                                               -- repeating trigger
     source_unit TEXT, -- NULL = this unit's own event; otherwise the
                        -- angränsande enhet (adjacent_units.name) it was
                        -- received from, see insert_event/list_events
@@ -207,17 +217,19 @@ THREAT_OVERRIDE_LEVEL_KEY = "threat_override_level"
 THREAT_OVERRIDE_NOTES_KEY = "threat_override_notes"
 THREAT_OVERRIDE_AT_KEY = "threat_override_at"
 
-# Keys used in the `settings` table for the four Signal group names --
+# Keys used in the `settings` table for the five Signal group names --
 # edited via the web UI's Inställningar page, same as the unit name,
 # taking priority over the SIGNAL_EVENTS_WATCH_GROUP/REPORT_GROUP/
-# RECURRING_GROUP/SENSOR_GROUP env vars in config.py when set. Changes
-# apply immediately to web-triggered sends (report/summary/recurring),
-# but `signal-events watch`/`serve --watch`'s background poller only
-# reads these at startup, so it needs restarting to pick up a change.
+# RECURRING_GROUP/SENSOR_GROUP/TAK_BRIDGE_GROUP env vars in config.py when
+# set. Changes apply immediately to web-triggered sends (report/summary/
+# recurring/tak-brygga), but `signal-events watch`/`serve --watch`'s
+# background poller only reads these at startup, so it needs restarting
+# to pick up a change.
 WATCH_GROUP_NAME_KEY = "watch_group_name"
 REPORT_GROUP_NAME_KEY = "report_group_name"
 RECURRING_GROUP_NAME_KEY = "recurring_group_name"
 SENSOR_GROUP_NAME_KEY = "sensor_group_name"
+TAK_BRIDGE_GROUP_NAME_KEY = "tak_bridge_group_name"
 
 # Key used in the `settings` table for the local Ollama server's port --
 # edited via the web UI's Inställningar page, taking priority over
@@ -306,6 +318,7 @@ def init_db() -> None:
         _migrate_add_column(conn, "events", "is_duplicate_reviewed", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "is_important", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "is_sensor", "INTEGER NOT NULL DEFAULT 0")
+        _migrate_add_column(conn, "events", "is_tak_bridge", "INTEGER NOT NULL DEFAULT 0")
         _migrate_add_column(conn, "events", "lat", "REAL")
         _migrate_add_column(conn, "events", "lon", "REAL")
         _migrate_add_column(conn, "events", "source_unit", "TEXT")
@@ -397,8 +410,9 @@ def insert_event(conn: sqlite3.Connection, message_id: int, fields: dict[str, An
         """INSERT INTO events
            (message_id, event_time, place, count, object, activity, marks,
             reported_by, next_steps, raw_text, needs_review, is_trivial,
-            is_duplicate, is_important, is_sensor, source_unit, lat, lon, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            is_duplicate, is_important, is_sensor, is_tak_bridge, source_unit,
+            lat, lon, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             message_id,
             fields.get("event_time"),
@@ -415,6 +429,7 @@ def insert_event(conn: sqlite3.Connection, message_id: int, fields: dict[str, An
             1 if fields.get("is_duplicate", False) else 0,
             1 if fields.get("is_important", False) else 0,
             1 if fields.get("is_sensor", False) else 0,
+            1 if fields.get("is_tak_bridge", False) else 0,
             fields.get("source_unit"),
             fields.get("lat"),
             fields.get("lon"),
@@ -876,6 +891,14 @@ def get_sensor_group_name(conn: sqlite3.Connection) -> str:
 
 def set_sensor_group_name(conn: sqlite3.Connection, value: str) -> None:
     set_setting(conn, SENSOR_GROUP_NAME_KEY, value.strip())
+
+
+def get_tak_bridge_group_name(conn: sqlite3.Connection) -> str:
+    return get_setting(conn, TAK_BRIDGE_GROUP_NAME_KEY) or config.TAK_BRIDGE_GROUP_NAME
+
+
+def set_tak_bridge_group_name(conn: sqlite3.Connection, value: str) -> None:
+    set_setting(conn, TAK_BRIDGE_GROUP_NAME_KEY, value.strip())
 
 
 def get_map_center(conn: sqlite3.Connection) -> tuple[float, float]:

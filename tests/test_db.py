@@ -1216,6 +1216,58 @@ def test_migrate_add_lat_lon_columns_is_idempotent_on_an_old_schema(tmp_path, mo
         assert events[0]["lon"] is None
 
 
+def test_migrate_add_is_tak_bridge_column_is_idempotent_on_an_old_schema(tmp_path, monkeypatch):
+    """Simulates a database created before is_tak_bridge existed to
+    confirm init_db() upgrades it in place without losing existing rows
+    -- same reasoning as the lat/lon migration test above."""
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "old.db")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "ATTACHMENTS_DIR", tmp_path / "attachments")
+
+    old_conn = sqlite3.connect(config.DB_PATH)
+    old_conn.executescript("""
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_timestamp INTEGER NOT NULL UNIQUE,
+            sender_number TEXT, sender_name TEXT, body TEXT,
+            raw_json TEXT, received_at TEXT NOT NULL
+        );
+        CREATE TABLE events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id INTEGER NOT NULL REFERENCES messages(id),
+            event_time TEXT, place TEXT, count TEXT, object TEXT,
+            activity TEXT, marks TEXT, reported_by TEXT, next_steps TEXT,
+            raw_text TEXT, needs_review INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+    """)
+    old_conn.execute(
+        "INSERT INTO messages (signal_timestamp, received_at) VALUES (1, 'now')"
+    )
+    old_conn.execute(
+        "INSERT INTO events (message_id, place, needs_review, created_at, updated_at) "
+        "VALUES (1, 'Pre-existing place', 0, 'now', 'now')"
+    )
+    old_conn.commit()
+    old_conn.close()
+
+    db.init_db()
+    db.init_db()  # idempotent
+
+    with db.get_connection() as conn:
+        events = db.list_events(conn)
+        assert len(events) == 1
+        assert events[0]["place"] == "Pre-existing place"
+        assert events[0]["is_tak_bridge"] == 0
+
+
+def test_get_set_tak_bridge_group_name_round_trips_and_falls_back_to_config():
+    with db.get_connection() as conn:
+        assert db.get_tak_bridge_group_name(conn) == config.TAK_BRIDGE_GROUP_NAME
+        db.set_tak_bridge_group_name(conn, "  TAK-brygga test  ")
+        assert db.get_tak_bridge_group_name(conn) == "TAK-brygga test"
+
+
 def test_migrate_add_is_trivial_column_is_idempotent_on_an_old_schema(tmp_path, monkeypatch):
     """Simulates a database created before is_trivial existed (a bare
     ALTER TABLE-less events table) to confirm init_db() upgrades it in

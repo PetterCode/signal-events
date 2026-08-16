@@ -25,7 +25,7 @@ def test_run_watch_loop_prints_heartbeat_after_silent_polls(capsys, monkeypatch)
     monkeypatch.setattr(cli.config, "REPORT_GROUP_NAME", "Report Group")
     with patch.object(
         signal_client, "watch_multi",
-        return_value=iter([(0, 0, 0)] * cli._WATCH_HEARTBEAT_EVERY),
+        return_value=iter([(0, 0, 0, 0)] * cli._WATCH_HEARTBEAT_EVERY),
     ):
         cli._run_watch_loop("Incident Group", poll_timeout=5)
 
@@ -38,7 +38,7 @@ def test_run_watch_loop_prints_heartbeat_after_silent_polls(capsys, monkeypatch)
 def test_run_watch_loop_prints_ingested_counts_and_resets_heartbeat(capsys, monkeypatch):
     monkeypatch.setattr(cli.config, "REPORT_GROUP_NAME", "Report Group")
     with patch.object(
-        signal_client, "watch_multi", return_value=iter([(2, 1, 0), (0, 0, 0), (0, 0, 0)])
+        signal_client, "watch_multi", return_value=iter([(2, 1, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0)])
     ):
         cli._run_watch_loop("Incident Group", poll_timeout=5)
 
@@ -51,32 +51,43 @@ def test_run_watch_loop_prints_ingested_counts_and_resets_heartbeat(capsys, monk
 
 def test_run_watch_loop_prints_sensor_event_counts(capsys, monkeypatch):
     monkeypatch.setattr(cli.config, "SENSOR_GROUP_NAME", "Sensor Group")
-    with patch.object(signal_client, "watch_multi", return_value=iter([(0, 0, 3)])):
+    with patch.object(signal_client, "watch_multi", return_value=iter([(0, 0, 3, 0)])):
         cli._run_watch_loop("Incident Group", poll_timeout=5)
 
     out = capsys.readouterr().out
     assert "Hämtade 3 sensorhändelse(r) från 'Sensor Group'." in out
 
 
-def test_run_watch_loop_polls_the_report_and_sensor_groups(monkeypatch):
+def test_run_watch_loop_prints_tak_bridge_counts(capsys, monkeypatch):
+    monkeypatch.setattr(cli.config, "TAK_BRIDGE_GROUP_NAME", "TAK Group")
+    with patch.object(signal_client, "watch_multi", return_value=iter([(0, 0, 0, 2)])):
+        cli._run_watch_loop("Incident Group", poll_timeout=5)
+
+    out = capsys.readouterr().out
+    assert "Hämtade 2 rapport(er) från TAK-bryggan ('TAK Group')." in out
+
+
+def test_run_watch_loop_polls_the_report_sensor_and_tak_bridge_groups(monkeypatch):
     """The adjacent-unit status channel is no longer independently
     configurable -- it's always whatever REPORT_GROUP_NAME is, since
     that's the same group this unit's own reports are sent to. Same
-    story for the sensor channel and SENSOR_GROUP_NAME."""
+    story for the sensor channel and SENSOR_GROUP_NAME, and the
+    TAK-bridge channel and TAK_BRIDGE_GROUP_NAME."""
     monkeypatch.setattr(cli.config, "REPORT_GROUP_NAME", "Report Group")
     monkeypatch.setattr(cli.config, "SENSOR_GROUP_NAME", "Sensor Group")
+    monkeypatch.setattr(cli.config, "TAK_BRIDGE_GROUP_NAME", "TAK Group")
     with patch.object(
-        signal_client, "watch_multi", return_value=iter([(0, 0, 0)])
+        signal_client, "watch_multi", return_value=iter([(0, 0, 0, 0)])
     ) as mock_watch_multi:
         cli._run_watch_loop("Incident Group", poll_timeout=5)
 
     mock_watch_multi.assert_called_once_with(
-        "Incident Group", "Report Group", "Sensor Group", poll_timeout_seconds=5
+        "Incident Group", "Report Group", "Sensor Group", "TAK Group", poll_timeout_seconds=5
     )
 
 
 def test_run_watch_loop_logs_watch_started():
-    with patch.object(signal_client, "watch_multi", return_value=iter([(0, 0, 0)])):
+    with patch.object(signal_client, "watch_multi", return_value=iter([(0, 0, 0, 0)])):
         cli._run_watch_loop("Incident Group", poll_timeout=5)
 
     with db.get_connection() as conn:
@@ -92,7 +103,7 @@ def test_run_watch_loop_prints_and_clears_receive_error_immediately(capsys):
     terminal would show nothing different at all during an outage."""
     with patch.object(
         signal_client, "watch_multi",
-        return_value=iter([(0, 0, 0), (0, 0, 0)]),
+        return_value=iter([(0, 0, 0, 0), (0, 0, 0, 0)]),
     ), patch.object(
         cli.db, "get_last_receive_error", side_effect=["nätverksfel", None],
     ):

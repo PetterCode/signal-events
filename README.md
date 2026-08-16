@@ -250,18 +250,47 @@ review workflow, same fields) — the only difference is which Signal
 group it came in on. This makes three groups checked in the same single
 signal-cli receive call per cycle described above.
 
+**A *fourth* group, `SIGNAL_EVENTS_TAK_BRIDGE_GROUP`** (default
+`"Stabsassistent test-tak"`), is the bridge toward a TAK Server (the
+backend ATAK/WinTAK/iTAK clients connect to) — reusing this app's
+existing Signal infrastructure rather than adding a native CoT/TLS
+client. The design deliberately keeps all TAK/CoT-specific complexity
+(the actual protocol handling, certificate trust, symbology) out of this
+app entirely: a *separate*, not-yet-built plugin living on/next to the
+TAK Server would hold its own Signal identity in this group and
+translate between CoT and plain text in both directions, using whatever
+plugin API that specific TAK Server offers (FreeTAKServer's and the
+official TAK Server's are quite different, which is exactly why that
+choice is left to whoever administers the actual server, rather than
+baked in here).
+
+- **Inbound**: a GeoChat message an ATAK operator sends, relayed by that
+  future plugin as plain text into this group, is ingested exactly like
+  any other incoming report — same `parser.parse_event_fields`
+  heuristics — and tagged `events.is_tak_bridge` for display/provenance
+  (shown as "Mottagen via TAK-brygga" on the event page). Unlike a
+  sensor-group event, it's *not* exempted from `duplicates.py`: a report
+  relayed from an ATAK operator is a normal one-off human observation,
+  not a repeating automated trigger.
+- **Outbound**: the "Skicka till TAK-brygga" button on any event's page
+  sends a one-event PDF summary to this group (the same
+  `_send_pdf_to_group` machinery period reports already use), for that
+  same future plugin to convert into a CoT marker for connected ATAK
+  clients to see.
+
 **Rename the Signal groups** (web UI, "Inställningar" page → "Signal-
-grupper") — the four group names above (bevakningsgrupp/watch,
-rapportgrupp/report, återkommande-grupp/recurring, sensorgrupp/sensor)
-can be edited there instead of only via the
+grupper") — the five group names above (bevakningsgrupp/watch,
+rapportgrupp/report, återkommande-grupp/recurring, sensorgrupp/sensor,
+TAK-brygga) can be edited there instead of only via the
 `SIGNAL_EVENTS_WATCH_GROUP`/`_REPORT_GROUP`/`_RECURRING_GROUP`/
-`_SENSOR_GROUP` env vars, which now only serve as the fallback default
-when nothing's been set on that page. A change there applies immediately
-to web-triggered sends (report/summary/recurring) and to the incident-
-report/summary forms' own display, but `signal-events watch`/`serve
---watch`'s background poller only resolves the watch/report group names
-once, at its own startup — restart it (or the whole server, for `serve
---watch`) to pick up a renamed group. An explicit `--group`/
+`_SENSOR_GROUP`/`_TAK_BRIDGE_GROUP` env vars, which now only serve as
+the fallback default when nothing's been set on that page. A change
+there applies immediately to web-triggered sends (report/summary/
+recurring/tak-brygga) and to the incident-report/summary forms' own
+display, but `signal-events watch`/`serve --watch`'s background poller
+only resolves the watch/report group names once, at its own startup —
+restart it (or the whole server, for `serve --watch`) to pick up a
+renamed group. An explicit `--group`/
 `--watch-group` CLI flag always overrides whatever's configured here.
 
 **Review and correct parsed events** (fully offline, run anytime):

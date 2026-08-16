@@ -166,6 +166,13 @@
           händelser hämtas ifrån &mdash; en sensorgateway rapporterar dit i
           samma format som vanliga händelserapporter, så de tolkas och lagras
           på exakt samma sätt och visas i den vanliga händelseloggen.
+          <strong>TAK-brygga</strong> är gruppen som används för att koppla
+          ihop appen med en TAK Server: en framtida TAK-sida-plugin (inte
+          en del av denna app) håller sin egen Signal-identitet i den här
+          gruppen och översätter mellan CoT och vanlig text i båda
+          riktningarna &mdash; inkommande ATAK-GeoChat-meddelanden landar
+          här och tolkas som vanliga rapporter, och "Skicka till
+          TAK-brygga" på en händelse skickar den hit.
           Ändringar här gäller direkt för knapparna i webbgränssnittet, men
           kräver en omstart av <span class="mono">signal-events watch</span>/<span class="mono">serve --watch</span>
           för att börja gälla för bakgrundsbevakningen.
@@ -182,6 +189,9 @@
 
           <label for="sensor_group">Sensorgrupp (hämtar automatiska sensorhändelser ifrån)</label>
           <input type="text" id="sensor_group" name="sensor_group" value="{{ sensor_group }}">
+
+          <label for="tak_bridge_group">TAK-brygga (tar emot/skickar till en framtida TAK-plugin)</label>
+          <input type="text" id="tak_bridge_group" name="tak_bridge_group" value="{{ tak_bridge_group }}">
 
           <div class="actions">
             <button type="submit">Spara Signal-grupper</button>

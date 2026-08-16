@@ -502,15 +502,15 @@ def test_watch_multi_dispatches_envelopes_to_correct_store():
 
     with patch.object(
         signal_client, "find_group_id_by_name",
-        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID", "TAK_GID"],
     ), patch.object(signal_client, "receive", return_value=envelopes):
         counts = list(
             signal_client.watch_multi(
-                "Incident Group", "Adjacent Group", "Sensor Group", max_iterations=1
+                "Incident Group", "Adjacent Group", "Sensor Group", "TAK Group", max_iterations=1
             )
         )
 
-    assert counts == [(1, 1, 1)]
+    assert counts == [(1, 1, 1, 0)]
     with db_module.get_connection() as conn:
         events = db_module.list_events(conn)
         assert len(events) == 2  # one incident report, one sensor event
@@ -524,15 +524,43 @@ def test_watch_multi_dispatches_envelopes_to_correct_store():
         assert adjacent[0]["unit_name"] == "Kompani_2"
 
 
+def test_watch_multi_dispatches_tak_bridge_group_and_tags_is_tak_bridge():
+    """The TAK-bridge group is a 4th leg alongside incident/adjacent/
+    sensor -- a message there is ingested as a normal event (same
+    parser.parse_event_fields path as any Signal report), tagged
+    is_tak_bridge for provenance/display, but -- unlike is_sensor --
+    NOT exempted from duplicates.py: a report relayed from an ATAK
+    operator is a one-off human observation, not a repeating automated
+    trigger, so it must stay eligible for duplicate detection like any
+    other incident report."""
+    from signal_events import db as db_module
+
+    envelopes = [_group_envelope(1, "TAK_GID", message="Person siktad vid östra grinden")]
+    with patch.object(
+        signal_client, "find_group_id_by_name",
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID", "TAK_GID"],
+    ), patch.object(signal_client, "receive", return_value=envelopes):
+        counts = list(signal_client.watch_multi(
+            "Incident Group", "Adjacent Group", "Sensor Group", "TAK Group", max_iterations=1,
+        ))
+
+    assert counts == [(0, 0, 0, 1)]
+    with db_module.get_connection() as conn:
+        events = db_module.list_events(conn)
+        assert len(events) == 1
+        assert events[0]["is_tak_bridge"] == 1
+        assert events[0]["is_sensor"] == 0  # not exempted from duplicates.py, unlike a sensor event
+
+
 def test_watch_multi_records_receive_status_on_success():
     from signal_events import db as db_module
 
     with patch.object(
         signal_client, "find_group_id_by_name",
-        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID", "TAK_GID"],
     ), patch.object(signal_client, "receive", return_value=[]):
         list(signal_client.watch_multi(
-            "Incident Group", "Adjacent Group", "Sensor Group", max_iterations=1,
+            "Incident Group", "Adjacent Group", "Sensor Group", "TAK Group", max_iterations=1,
         ))
 
     with db_module.get_connection() as conn:
@@ -555,19 +583,19 @@ def test_watch_multi_survives_a_failing_cycle_and_keeps_polling():
     envelopes = [_group_envelope(1, "INCIDENT_GID", message="Fordon vid grinden")]
     with patch.object(
         signal_client, "find_group_id_by_name",
-        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID", "TAK_GID"],
     ), patch.object(
         signal_client, "receive",
         side_effect=[signal_client.SignalCliError("network unreachable"), envelopes],
     ):
         counts = list(signal_client.watch_multi(
-            "Incident Group", "Adjacent Group", "Sensor Group",
+            "Incident Group", "Adjacent Group", "Sensor Group", "TAK Group",
             max_iterations=2, retry_delay_seconds=0,
         ))
 
     # First cycle failed (no exception raised to the caller, just an
     # empty result); second cycle succeeded and ingested normally.
-    assert counts == [(0, 0, 0), (1, 0, 0)]
+    assert counts == [(0, 0, 0, 0), (1, 0, 0, 0)]
 
     with db_module.get_connection() as conn:
         assert db_module.get_last_receive_error(conn) is None  # cleared by the recovery
@@ -593,13 +621,13 @@ def test_watch_multi_logs_a_self_sent_message_in_the_incident_group():
     envelopes = [_own_sync_envelope(1, "INCIDENT_GID", message="test från min egen telefon")]
     with patch.object(
         signal_client, "find_group_id_by_name",
-        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID", "TAK_GID"],
     ), patch.object(signal_client, "receive", return_value=envelopes):
         counts = list(signal_client.watch_multi(
-            "Incident Group", "Adjacent Group", "Sensor Group", max_iterations=1,
+            "Incident Group", "Adjacent Group", "Sensor Group", "TAK Group", max_iterations=1,
         ))
 
-    assert counts == [(0, 0, 0)]  # never ingested as a normal event
+    assert counts == [(0, 0, 0, 0)]  # never ingested as a normal event
     with db_module.get_connection() as conn:
         assert db_module.list_events(conn) == []
         log_entries = db_module.list_system_log(conn)
@@ -617,10 +645,10 @@ def test_watch_multi_does_not_log_self_sent_messages_in_other_groups():
     envelopes = [_own_sync_envelope(1, "ADJACENT_GID", message="ett skickat rapport-eko")]
     with patch.object(
         signal_client, "find_group_id_by_name",
-        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID"],
+        side_effect=["INCIDENT_GID", "ADJACENT_GID", "SENSOR_GID", "TAK_GID"],
     ), patch.object(signal_client, "receive", return_value=envelopes):
         list(signal_client.watch_multi(
-            "Incident Group", "Adjacent Group", "Sensor Group", max_iterations=1,
+            "Incident Group", "Adjacent Group", "Sensor Group", "TAK Group", max_iterations=1,
         ))
 
     with db_module.get_connection() as conn:
