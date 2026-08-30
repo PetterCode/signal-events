@@ -2103,6 +2103,19 @@ def summary():
     return _render_summary_page(preset, include_unreviewed, summary_data)
 
 
+def _unreviewed_count_in_period(preset: str) -> int:
+    """How many of this unit's own events in `preset`'s window are still
+    unreviewed -- shown next to "Inkludera ogranskade" (see
+    summary.html) so it's never an invisible, easy-to-miss toggle. Without
+    this, a freshly imported/ingested batch that hasn't been reviewed yet
+    shows as "0 rapporter i underlaget" on the default (reviewed-only)
+    view -- a real, misleading "all clear" for however many severity-
+    relevant reports are actually just sitting unreviewed just out of
+    sight (a human never even sees a reason to toggle the filter)."""
+    with db.get_connection() as conn:
+        return len(db.list_events(conn, since=_since_iso(preset), needs_review=True, own_only=True))
+
+
 def _render_summary_page(
     preset: str, include_unreviewed: bool, summary_data: analysis.Summary,
     narrative: str | None = None,
@@ -2123,6 +2136,7 @@ def _render_summary_page(
             _SINCE_LABELS.get(threat_snapshot["period_label"], threat_snapshot["period_label"])
             if threat_snapshot else None
         ),
+        unreviewed_count=_unreviewed_count_in_period(preset),
     )
 
 
@@ -2164,7 +2178,21 @@ def summary_refresh():
     preset = request.form.get("since", session.get("summary_since", "7d"))
     include_unreviewed = request.form.get("include_unreviewed") == "1"
     _refresh_threat_snapshot(preset, include_unreviewed)
-    flash("Hotbedömningen uppdaterad.")
+
+    unreviewed_count = 0 if include_unreviewed else _unreviewed_count_in_period(preset)
+    if unreviewed_count:
+        # The single moment this matters most: a snapshot that's about to
+        # be shown everywhere (header included) just got frozen while
+        # excluding N reports nobody's looked at yet -- flag it right
+        # here rather than leaving it to be noticed later.
+        flash(
+            f"Hotbedömningen uppdaterad. OBS: {unreviewed_count} ogranskad(e) "
+            f"rapport(er) för perioden ingick inte -- kryssa i \"Inkludera "
+            f"ogranskade\" och uppdatera igen för en fullständig bild.",
+            "error",
+        )
+    else:
+        flash("Hotbedömningen uppdaterad.")
     return redirect(url_for("events.summary", since=preset, include_unreviewed=1 if include_unreviewed else 0))
 
 
@@ -2495,6 +2523,21 @@ def summary_ai():
     )
 
 
+def _ai_chat_return_url() -> str:
+    """/entities and /summary/ai render the same combined "Analys"
+    template now (see _entities_table_context's docstring) -- without
+    this, every chat action (ask/respond/clear) always redirected to
+    /summary/ai specifically, so asking a question while on /entities
+    silently changed the address bar to /summary/ai afterward even
+    though the page you land on looks identical. Each form on
+    analys.html posts its own current request.path back as `return_to`
+    (see summary_ai_chat/_respond/_clear) so you land back on whichever
+    URL you were actually on -- _safe_next_url guards against anything
+    that isn't a same-site relative path, same as the login flow's own
+    `next` parameter."""
+    return _safe_next_url(request.form.get("return_to")) or url_for("events.summary_ai")
+
+
 @bp.route("/summary/ai/chat", methods=["POST"])
 def summary_ai_chat():
     """Saves the question and redirects immediately -- see summary_ai's
@@ -2506,7 +2549,7 @@ def summary_ai_chat():
         history.append({"role": "user", "content": message})
         session[_AI_CHAT_SESSION_KEY] = history[-_AI_CHAT_MAX_MESSAGES:]
         session[_AI_CHAT_FAILED_KEY] = False
-    return redirect(url_for("events.summary_ai"))
+    return redirect(_ai_chat_return_url())
 
 
 @bp.route("/summary/ai/respond", methods=["POST"])
@@ -2530,11 +2573,11 @@ def summary_ai_respond():
             history.append({"role": "assistant", "content": reply})
             session[_AI_CHAT_SESSION_KEY] = history[-_AI_CHAT_MAX_MESSAGES:]
             session[_AI_CHAT_FAILED_KEY] = False
-    return redirect(url_for("events.summary_ai"))
+    return redirect(_ai_chat_return_url())
 
 
 @bp.route("/summary/ai/clear", methods=["POST"])
 def summary_ai_clear():
     session.pop(_AI_CHAT_SESSION_KEY, None)
     session.pop(_AI_CHAT_FAILED_KEY, None)
-    return redirect(url_for("events.summary_ai"))
+    return redirect(_ai_chat_return_url())

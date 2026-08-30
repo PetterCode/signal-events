@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Tidslinje{% endblock %}
+{% block title %}Händelser{% endblock %}
 {% block content %}
-  <h1>Tidslinje</h1>
+  <h1>Händelser</h1>
   <p>
     <a class="btn" href="{{ url_for('events.new_event') }}">+ Lägg till händelse</a>
     <a class="btn btn-secondary" href="{{ url_for('events.new_adjacent_event') }}">+ Från angränsande enhet</a>
@@ -24,6 +24,7 @@
   {% if not rows %}
     <p>Inga händelser under denna period.</p>
   {% else %}
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -67,5 +68,6 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% endif %}
 {% endblock %}

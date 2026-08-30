@@ -18,6 +18,7 @@
       loggat ut.
     </p>
     {% if active_users %}
+      <div class="table-wrap">
       <table>
         <thead><tr><th>Namn</th><th>Senast aktiv</th></tr></thead>
         <tbody>
@@ -29,6 +30,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <p style="color:#666">Inga gäster inloggade just nu.</p>
     {% endif %}
@@ -37,6 +39,7 @@
   <div class="card">
     <h3>Logg</h3>
     {% if entries %}
+      <div class="table-wrap">
       <table>
         <thead><tr><th>Tid</th><th>Händelse</th><th>Detalj</th></tr></thead>
         <tbody>
@@ -62,6 +65,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <p style="color:#666">Inga händelser loggade ännu.</p>
     {% endif %}

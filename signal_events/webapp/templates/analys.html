@@ -65,6 +65,7 @@
       {% endif %}
     </p>
   {% else %}
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -101,6 +102,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% endif %}
 
   <h2 style="margin-top:2.5rem">AI-analys</h2>
@@ -113,6 +115,7 @@
   </p>
 
   {% macro event_results_table(events) %}
+    <div class="table-wrap">
     <table>
       <thead>
         <tr>
@@ -137,6 +140,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   {% endmacro %}
 
   <div class="card">
@@ -215,14 +219,18 @@
     {% if pending %}
       {% if failed %}
         <form method="post" action="{{ url_for('events.summary_ai_respond') }}">
+          <input type="hidden" name="return_to" value="{{ request.path }}">
           <button type="submit">Försök igen</button>
         </form>
       {% else %}
-        <form id="ai-respond-form" method="post" action="{{ url_for('events.summary_ai_respond') }}" style="display:none"></form>
+        <form id="ai-respond-form" method="post" action="{{ url_for('events.summary_ai_respond') }}" style="display:none">
+          <input type="hidden" name="return_to" value="{{ request.path }}">
+        </form>
         <script>document.getElementById("ai-respond-form").submit();</script>
       {% endif %}
     {% else %}
       <form method="post" action="{{ url_for('events.summary_ai_chat') }}">
+        <input type="hidden" name="return_to" value="{{ request.path }}">
         <div class="chat-input-row">
           <textarea name="message" placeholder="Skriv en fråga om händelser eller hotbedömningar..." required></textarea>
           <button type="submit">Skicka</button>
@@ -233,6 +241,7 @@
     {% if chat_history %}
       <p class="actions">
         <form method="post" action="{{ url_for('events.summary_ai_clear') }}" style="display:inline">
+          <input type="hidden" name="return_to" value="{{ request.path }}">
           <button type="submit" class="btn-secondary">Rensa konversation</button>
         </form>
       </p>

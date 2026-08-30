@@ -14,6 +14,11 @@
       <a href="{{ url_for('events.summary', since=since, include_unreviewed=0) }}">Endast granskade</a>
     {% else %}
       <a href="{{ url_for('events.summary', since=since, include_unreviewed=1) }}">Inkludera ogranskade</a>
+      {% if unreviewed_count %}
+        <span class="badge badge-review" title="Dessa räknas inte med i underlaget nedan förrän &quot;Inkludera ogranskade&quot; kryssas i.">
+          {{ unreviewed_count }} väntar på granskning
+        </span>
+      {% endif %}
     {% endif %}
   </div>
 

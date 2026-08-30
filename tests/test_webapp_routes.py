@@ -397,6 +397,86 @@ def test_summary_refresh_freezes_the_previewed_period_into_the_header():
     assert b'class="badge badge-level-red"' in resp_events_again.data
 
 
+def _insert_unreviewed_event(signal_timestamp: int, place: str = "Grinden") -> None:
+    with db_module.get_connection() as conn:
+        message_id = db_module.insert_message(
+            conn, signal_timestamp=signal_timestamp, sender_number=None, sender_name=None,
+            body="text", raw_json=json.dumps({}),
+        )
+        db_module.insert_event(conn, message_id=message_id, fields={"place": place})  # needs_review defaults True
+
+
+def test_summary_page_shows_unreviewed_count_next_to_the_toggle():
+    """Regression guard: a freshly imported/ingested batch that hasn't
+    been reviewed yet used to show "0 rapporter i underlaget" on the
+    default view with no hint that anything was excluded -- the count
+    next to "Inkludera ogranskade" (see summary.html) is the fix."""
+    _insert_unreviewed_event(1)
+    _insert_unreviewed_event(2)
+    client = create_app().test_client()
+
+    resp = client.get("/summary?since=all")
+    assert "2 väntar på granskning".encode() in resp.data
+
+    # Toggling the filter on hides the count (it's about what's *not*
+    # currently included, so it's meaningless once everything is).
+    resp_included = client.get("/summary?since=all&include_unreviewed=1")
+    assert "väntar på granskning".encode() not in resp_included.data
+
+
+def test_summary_page_shows_no_unreviewed_badge_when_nothing_is_waiting():
+    client = create_app().test_client()
+    resp = client.get("/summary?since=all")
+    assert "väntar på granskning".encode() not in resp.data
+
+
+def test_summary_refresh_warns_when_it_excludes_unreviewed_reports():
+    """The one moment this matters most: about to freeze a snapshot
+    that's shown everywhere (header included) while N reports nobody's
+    looked at yet are excluded -- flagged right here, not left to be
+    noticed later (see summary_refresh)."""
+    _insert_unreviewed_event(1)
+    _insert_unreviewed_event(2)
+    _insert_unreviewed_event(3)
+    client = create_app().test_client()
+
+    resp = client.post(
+        "/summary/refresh", data={"since": "all", "include_unreviewed": "0"}, follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "3 ogranskad(e) rapport(er)".encode() in resp.data
+    assert b'class="flash flash-error"' in resp.data
+
+    # The snapshot itself still gets frozen -- the warning is additional
+    # information, not a refusal to update.
+    with db_module.get_connection() as conn:
+        assert db_module.get_threat_snapshot(conn) is not None
+
+
+def test_summary_refresh_does_not_warn_when_unreviewed_reports_are_included():
+    _insert_unreviewed_event(1)
+    client = create_app().test_client()
+
+    resp = client.post(
+        "/summary/refresh", data={"since": "all", "include_unreviewed": "1"}, follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Hotbedömningen uppdaterad.".encode() in resp.data
+    assert "ogranskad(e) rapport(er)".encode() not in resp.data
+
+
+def test_summary_refresh_does_not_warn_when_nothing_is_unreviewed():
+    _insert_two_recurring_armed_sightings()  # needs_review=False
+    client = create_app().test_client()
+
+    resp = client.post(
+        "/summary/refresh", data={"since": "all", "include_unreviewed": "0"}, follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Hotbedömningen uppdaterad.".encode() in resp.data
+    assert "ogranskad(e) rapport(er)".encode() not in resp.data
+
+
 def test_header_shows_no_increase_icon_before_the_first_snapshot():
     """Nothing to compare a live preview against yet -- the icon has no
     meaning until a snapshot exists (see inject_header_status)."""
@@ -1550,6 +1630,42 @@ def test_summary_ai_chat_saves_the_question_immediately_without_calling_ollama()
     assert resp.status_code == 200
     assert "Har vi sett den här bilen förut?".encode() in resp.data
     assert "AI-analys tänker".encode() in resp.data
+
+
+def test_summary_ai_chat_redirects_back_to_entities_when_asked_from_there():
+    """/entities and /summary/ai render the same "Analys" content now --
+    asking a question from /entities must land back on /entities, not
+    silently switch the address bar to /summary/ai (see
+    _ai_chat_return_url and analys.html's return_to hidden fields)."""
+    client = create_app().test_client()
+    resp = client.post(
+        "/summary/ai/chat", data={"message": "Fråga", "return_to": "/entities"},
+    )
+    assert resp.status_code == 302
+    assert resp.headers["Location"] == "/entities"
+
+
+def test_summary_ai_chat_ignores_an_unsafe_return_to():
+    """Only a same-site relative path is ever followed -- same guard as
+    the login flow's own `next` parameter (_safe_next_url)."""
+    client = create_app().test_client()
+    resp = client.post(
+        "/summary/ai/chat",
+        data={"message": "Fråga", "return_to": "https://evil.example/"},
+    )
+    assert resp.status_code == 302
+    assert resp.headers["Location"] == "/summary/ai"
+
+
+def test_summary_ai_respond_and_clear_also_honor_return_to():
+    client = create_app().test_client()
+    client.post("/summary/ai/chat", data={"message": "Fråga", "return_to": "/entities"})
+
+    resp_respond = client.post("/summary/ai/respond", data={"return_to": "/entities"})
+    assert resp_respond.headers["Location"] == "/entities"
+
+    resp_clear = client.post("/summary/ai/clear", data={"return_to": "/entities"})
+    assert resp_clear.headers["Location"] == "/entities"
 
 
 def test_summary_ai_page_auto_submits_the_pending_reply_request():

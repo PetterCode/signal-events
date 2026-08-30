@@ -212,7 +212,7 @@
       <label>
         <input type="checkbox" name="mark_important" {{ 'checked' if event.is_important else '' }}
                style="width:auto;display:inline;vertical-align:middle">
-        Hög vikt (lyfts fram i Tidslinje &mdash; en manuell markering, ingen
+        Hög vikt (lyfts fram i Händelser &mdash; en manuell markering, ingen
         automatisk bedömning görs)
       </label>
 
@@ -243,6 +243,7 @@
         automatiskt när händelsen sparas.
       </p>
     {% else %}
+      <div class="table-wrap">
       <table>
         <thead>
           <tr><th>Typ</th><th>Namn/beteckning</th><th>Reg.nr</th><th>Källa</th><th></th></tr>
@@ -268,6 +269,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% endif %}
 
     <h4 style="margin-top:1rem">Länka en befintlig post</h4>

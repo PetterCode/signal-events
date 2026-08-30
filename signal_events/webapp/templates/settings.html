@@ -124,6 +124,7 @@
         </p>
 
         {% if adjacent_units %}
+          <div class="table-wrap">
           <table>
             <thead><tr><th>Namn</th><th></th></tr></thead>
             <tbody>
@@ -139,6 +140,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
         {% else %}
           <p style="color:#666">Inga angränsande enheter tillagda ännu.</p>
         {% endif %}
@@ -464,6 +466,7 @@
         </p>
 
         {% if users %}
+          <div class="table-wrap">
           <table>
             <thead><tr><th>Namn</th><th>Skapad</th><th></th></tr></thead>
             <tbody>
@@ -480,6 +483,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
         {% else %}
           <p style="color:#666">Inga ytterligare användare tillagda ännu.</p>
         {% endif %}

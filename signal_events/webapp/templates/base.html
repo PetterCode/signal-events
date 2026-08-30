@@ -14,6 +14,13 @@
     .header-status .badge { font-weight: 700; }
     #header-clock { display: inline-block; min-width: 19ch; font-variant-numeric: tabular-nums; }
     main { padding: 1.5rem; max-width: 1000px; margin: 0 auto; }
+    /* Every data table is wrapped in this (see each template) so a wide
+       table scrolls within itself on a small screen instead of dragging
+       the whole page's layout viewport wider -- without it, a table
+       wider than the device forces the page to render zoomed out
+       (defeating the viewport meta tag above) rather than just needing a
+       horizontal swipe on the table itself. */
+    .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; background: #fff; }
     th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e0e0e0; font-size: 0.9rem; }
     th { background: #eef1f4; }

@@ -257,12 +257,12 @@ matched, since that's read directly from the filename).
 **Events received from adjacent units** are a separate thing from the
 status reports above — a specific observation an adjacent unit passed
 along (phone call, radio, in person) that's worth keeping in the same
-structured log. "+ Från angränsande enhet" on Tidslinje opens the same
+structured log. "+ Från angränsande enhet" on Händelser opens the same
 8-field manual-entry form as "+ Lägg till händelse", plus a required
 unit-name field (autocompleted from the Inställningar roster above, but
 free text — no need to have pre-added the unit). The saved event is
 tagged with that unit's name (`events.source_unit`) so it's tracked
-separately from this unit's own: shown on Tidslinje with a "från
+separately from this unit's own: shown on Händelser with a "från
 `<enhet>`" badge and on Kart-vy as a small blue dot instead of this
 unit's own pin, but always excluded from this unit's own threat
 assessment and every generated report (`db.list_events`'s `own_only`) —
@@ -456,11 +456,11 @@ auto-extraction, tried against the "Plats" and "Anteckningar" fields) is
 also on the "Lägg till händelse manuellt" and "+ Från angränsande enhet"
 forms, so a manually entered report can carry a position too, not just
 Signal-ingested ones.
-"Kart-vy" (a button on the Tidslinje page, not its own top-level nav
+"Kart-vy" (a button on the Händelser page, not its own top-level nav
 tab — moved there to keep the top nav short enough for a small/mobile
 screen) shows every event that has a known position as a
 marker on one map, filtered by the same Tidsperiod selection (24 tim/7
-dagar/30 dagar/Alla) as Sammanställd hotbedömning and Tidslinje — defaults
+dagar/30 dagar/Alla) as Sammanställd hotbedömning and Händelser — defaults
 to 7 dagar; clicking a marker opens that event. This unit's own events show
 as ordinary pins; events received from adjacent units (see above) show as
 small blue dots instead, and a "Visa/Dölj händelser från angränsande
@@ -698,7 +698,7 @@ patrol) — tick it and the event is excluded both from generated reports
 and from the "Sammanställd hotbedömning" threat analysis (see "RED is
 reserved for..." below), the same way a duplicate already is. A
 **"Hög vikt"** checkbox does the opposite kind of flagging — a badge on
-the event page and in Tidslinje's "Status" column, for a report a human
+the event page and in Händelser's "Status" column, for a report a human
 wants to stand out at a glance — but purely manual: unlike Trivial/
 Dublett there's no auto-classifier behind it (no reliable rule to guess
 importance), and it has no effect on what's included in a generated
