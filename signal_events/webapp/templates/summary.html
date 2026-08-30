@@ -26,6 +26,50 @@
   </p>
 
   <div class="card">
+    <h3>Nuvarande hotbedömning</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Detta är hotnivån som visas i sidhuvudet på varje sida &mdash; den
+      uppdateras <strong>inte</strong> automatiskt, bara när "Uppdatera
+      hotbedömning" nedan klickas. Ändra gärna period/granskningsfilter
+      och jämför mot förhandsgranskningen längre ner innan du uppdaterar.
+    </p>
+    {% if threat_snapshot %}
+      <span class="threat-badge threat-{{ threat_snapshot.level }}">
+        {% if threat_snapshot.level == "red" %}RÖD &mdash; Återkommande allvarlig indikation, rekommenderad omedelbar genomgång
+        {% elif threat_snapshot.level == "yellow" %}GUL &mdash; Förhöjd uppmärksamhet rekommenderas
+        {% else %}GRÖN &mdash; Låg hotnivå
+        {% endif %}
+        (poäng: {{ threat_snapshot.score }})
+      </span>
+      <p>
+        Rapporter i underlaget: {{ threat_snapshot.total_events }} &middot;
+        period: {{ threat_snapshot_period_label }} &middot;
+        uppdaterad: {{ threat_snapshot.updated_at }}
+      </p>
+      <h4 style="margin-top:1rem">Motivering</h4>
+      <ul>
+        {% for reason in threat_snapshot.reasons %}
+          <li>{{ reason }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Hotbedömningen har inte uppdaterats än.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('events.summary_refresh') }}">
+      <input type="hidden" name="since" value="{{ since }}">
+      <input type="hidden" name="include_unreviewed" value="{{ 1 if include_unreviewed else 0 }}">
+      <div class="actions">
+        <button type="submit">Uppdatera hotbedömning (för vald Tidsperiod ovan: {{ since }})</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Förhandsgranskning &mdash; vald period</h3>
+    <p style="font-size:0.85rem;color:#666">
+      Vad en uppdatering skulle visa för Tidsperioden/filtret valt ovan
+      &mdash; sparas inte förrän "Uppdatera hotbedömning" ovan klickas.
+    </p>
     <span class="threat-badge threat-{{ summary.threat.level }}">
       {% if summary.threat.level == "red" %}RÖD &mdash; Återkommande allvarlig indikation, rekommenderad omedelbar genomgång
       {% elif summary.threat.level == "yellow" %}GUL &mdash; Förhöjd uppmärksamhet rekommenderas
@@ -35,7 +79,7 @@
     </span>
     <p>Rapporter i underlaget: {{ summary.total_events }} &middot; period: {{ since }}</p>
 
-    <h3>Motivering</h3>
+    <h4>Motivering</h4>
     <ul>
       {% for reason in summary.threat.reasons %}
         <li>{{ reason }}</li>

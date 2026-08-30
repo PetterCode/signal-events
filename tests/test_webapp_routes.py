@@ -232,7 +232,16 @@ def test_header_status_strip_shows_unit_name_threat_level_and_last_adjacent_send
     resp = client.get("/events")
 
     assert b"Kompani 1" in resp.data
-    assert b"badge-level-green" in resp.data  # no events yet -- default is green
+    # Threat level is a manually-refreshed snapshot now (see
+    # inject_header_status/summary_refresh), not live-computed -- with
+    # nothing ever refreshed, the header shows the neutral "not yet
+    # updated" state rather than a fabricated default level. Checking
+    # for the rendered `class="badge badge-level-X"` attribute, not just
+    # the bare class name -- badge-level-X is also a CSS selector in
+    # base.html's <style> block (always present), so a bare substring
+    # check would pass regardless of what's actually rendered.
+    assert b"Hotniv\xc3\xa5 ej fastst\xc3\xa4lld" in resp.data
+    assert b'class="badge badge-level-unknown"' in resp.data
     # No report sent to adjacent units yet, and no receive attempt yet
     # either (see the separate "Senast mottagning" line) -- both read
     # "Aldrig" until each respective thing has happened at least once.
@@ -292,8 +301,12 @@ def test_header_shows_adjacent_unit_threat_status_parsed_from_latest_report():
     assert b'class="header-status header-adjacent"' in resp.data
     assert "2.Kompani".encode() in resp.data
     assert "3.Kompani".encode() in resp.data
-    assert b"badge-level-green" in resp.data
-    assert b"badge-level-red" in resp.data
+    # class="badge badge-level-X", not a bare substring check -- badge-
+    # level-X is also a CSS selector in base.html's <style> block
+    # (always present), so a bare check would pass regardless of what's
+    # actually rendered.
+    assert b'class="badge badge-level-green"' in resp.data
+    assert b'class="badge badge-level-red"' in resp.data
     assert "mottagen".encode() in resp.data
 
 
@@ -307,15 +320,11 @@ def test_header_shows_unknown_badge_when_adjacent_report_has_no_parseable_level(
     client = create_app().test_client()
     resp = client.get("/events")
 
-    assert b"badge-level-unknown" in resp.data
+    assert b'class="badge badge-level-unknown"' in resp.data
     assert "okänd".encode() in resp.data
 
 
-def test_header_threat_level_matches_whatever_period_the_summary_page_last_viewed():
-    """Regression: the header's threat badge must always agree with the
-    Sammanställd hotbedömning page's own assessment for the period that
-    page last showed -- it must not use some independently fixed window
-    that could silently disagree with it (see inject_header_status)."""
+def _insert_two_recurring_armed_sightings(created_at: str = "2020-01-01T10:00:00+00:00") -> None:
     with db_module.get_connection() as conn:
         for i in (1, 2):
             message_id = db_module.insert_message(
@@ -331,26 +340,61 @@ def test_header_threat_level_matches_whatever_period_the_summary_page_last_viewe
             )
             conn.execute(
                 "UPDATE events SET created_at = ? WHERE id = ?",
-                ("2020-01-01T10:00:00+00:00", event_id),
+                (created_at, event_id),
             )
 
+
+def test_viewing_different_summary_periods_never_changes_the_header_on_its_own():
+    """Regression guard for the "do not automatically update the threat
+    level" behavior: browsing Sammanställd hotbedömning's Tidsperiod
+    links is a live *preview* only (see summary.html's "Förhandsgranskning"
+    card) -- it must never silently change the header's "Nuvarande
+    hotbedömning" snapshot on its own, only summary_refresh does that."""
+    _insert_two_recurring_armed_sightings()
     client = create_app().test_client()
 
-    # Viewing the summary page over "all" picks up the old recurring
-    # armed sighting -> RED, and remembers "all" in the session.
+    # Previewing "all" picks up the old recurring armed sighting -> the
+    # page's own live preview shows RÖD...
     resp_all = client.get("/summary?since=all")
+    assert "Förhandsgranskning".encode() in resp_all.data
     assert "RÖD".encode() in resp_all.data
-    assert b"badge-level-red" in resp_all.data  # the header, same response
+    # ...but the header (same response) must still show "not yet
+    # updated", since nothing has been frozen via summary_refresh.
+    assert "Hotnivå ej fastställd".encode() in resp_all.data
 
-    # Any other page must show the same RED the summary page just showed.
+    # Any other page must agree -- still never updated.
     resp_events = client.get("/events")
-    assert b"badge-level-red" in resp_events.data
+    assert "Hotnivå ej fastställd".encode() in resp_events.data
 
-    # Switching the summary page back to the 7-day default excludes
-    # those old events -> GREEN, and the header must follow along.
+
+def test_summary_refresh_freezes_the_previewed_period_into_the_header():
+    """The only thing that actually changes "Nuvarande hotbedömning" --
+    posts whatever since/include_unreviewed was selected when the button
+    was clicked (see summary.html's hidden fields), and that's what
+    shows up everywhere afterward, including a timestamp."""
+    _insert_two_recurring_armed_sightings()
+    client = create_app().test_client()
+
+    resp = client.post("/summary/refresh", data={"since": "all", "include_unreviewed": "0"}, follow_redirects=True)
+    assert resp.status_code == 200
+    assert "Hotbedömningen uppdaterad".encode() in resp.data
+    assert b'class="badge badge-level-red"' in resp.data  # header, same response
+
+    resp_events = client.get("/events")
+    assert b'class="badge badge-level-red"' in resp_events.data
+    assert "uppdaterad".encode() in resp_events.data  # timestamp label, see base.html
+
+    with db_module.get_connection() as conn:
+        snapshot = db_module.get_threat_snapshot(conn)
+    assert snapshot["level"] == "red"
+    assert snapshot["period_label"] == "all"
+    assert snapshot["updated_at"] is not None
+
+    # Merely previewing a different period afterward must not overwrite
+    # the frozen snapshot -- still red/all until refreshed again.
     client.get("/summary?since=7d")
     resp_events_again = client.get("/events")
-    assert b"badge-level-green" in resp_events_again.data
+    assert b'class="badge badge-level-red"' in resp_events_again.data
 
 
 def test_delete_event_route_removes_the_event_and_redirects_to_the_list():
@@ -1206,12 +1250,15 @@ def test_summary_override_route_saves_and_reflects_in_the_header():
 
     assert resp.status_code == 200
     assert "RÖD".encode() in resp.data
-    assert b"badge-level-red" in resp.data  # header status strip, same page
+    # Setting an override is itself a deliberate action, so it also
+    # freshens the "Nuvarande hotbedömning" snapshot immediately (see
+    # _refresh_threat_snapshot) -- no separate "Uppdatera" click needed.
+    assert b'class="badge badge-level-red"' in resp.data  # header status strip, same page
     assert "Bekräftad av chefvakt".encode() in resp.data
 
     # Any other page must show the same manually-set RÖD in its header.
     resp_events = client.get("/events")
-    assert b"badge-level-red" in resp_events.data
+    assert b'class="badge badge-level-red"' in resp_events.data
 
 
 def test_summary_override_clear_route_reverts_to_automatic():
@@ -1221,7 +1268,9 @@ def test_summary_override_clear_route_reverts_to_automatic():
     resp = client.post("/summary/override/clear", data={"since": "7d", "include_unreviewed": "0"}, follow_redirects=True)
 
     assert resp.status_code == 200
-    assert b"badge-level-green" in resp.data  # no events -- automatic default is green
+    # Clearing the override also refreshes the snapshot immediately (see
+    # _refresh_threat_snapshot); no events -- automatic default is green.
+    assert b'class="badge badge-level-green"' in resp.data
     with db_module.get_connection() as conn:
         assert db_module.get_threat_override(conn) is None
 

@@ -217,6 +217,23 @@ THREAT_OVERRIDE_LEVEL_KEY = "threat_override_level"
 THREAT_OVERRIDE_NOTES_KEY = "threat_override_notes"
 THREAT_OVERRIDE_AT_KEY = "threat_override_at"
 
+# Keys used in the `settings` table for the *current* threat-level
+# snapshot -- what the header status strip and Sammanställd hotbedömning
+# show as "Nuvarande hotbedömning". Deliberately not live-computed on
+# every page load (the way it used to be): a human clicks "Uppdatera
+# hotbedömning" (see webapp/routes.py's summary_refresh) to recompute
+# and freeze a new snapshot here, complete with when it was updated --
+# switching Tidsperiod on Sammanställd hotbedömning still shows a live
+# preview for comparison, but never overwrites this on its own. A single
+# current snapshot, not one per period, same reasoning as
+# THREAT_OVERRIDE_*'s "one current value" above.
+THREAT_SNAPSHOT_LEVEL_KEY = "threat_snapshot_level"
+THREAT_SNAPSHOT_SCORE_KEY = "threat_snapshot_score"
+THREAT_SNAPSHOT_REASONS_KEY = "threat_snapshot_reasons"
+THREAT_SNAPSHOT_TOTAL_EVENTS_KEY = "threat_snapshot_total_events"
+THREAT_SNAPSHOT_PERIOD_LABEL_KEY = "threat_snapshot_period_label"
+THREAT_SNAPSHOT_UPDATED_AT_KEY = "threat_snapshot_updated_at"
+
 # Keys used in the `settings` table for the five Signal group names --
 # edited via the web UI's Inställningar page, same as the unit name,
 # taking priority over the SIGNAL_EVENTS_WATCH_GROUP/REPORT_GROUP/
@@ -1085,6 +1102,41 @@ def clear_threat_override(conn: sqlite3.Connection) -> None:
         "DELETE FROM settings WHERE key IN (?, ?, ?)",
         (THREAT_OVERRIDE_LEVEL_KEY, THREAT_OVERRIDE_NOTES_KEY, THREAT_OVERRIDE_AT_KEY),
     )
+
+
+def get_threat_snapshot(conn: sqlite3.Connection) -> Optional[dict]:
+    """The threat level shown on the header status strip and as the
+    "Nuvarande hotbedömning" on Sammanställd hotbedömning -- a frozen
+    snapshot, not a live computation (see webapp/routes.py's
+    summary_refresh docstring for why: recomputing on every page load
+    made the badge change out from under a human mid-shift with no
+    explicit moment anyone could point to as "when it changed"). Returns
+    None if summary_refresh has never been called (a fresh install, or a
+    database that predates this feature) -- callers show a neutral "not
+    yet updated" state rather than a fabricated level."""
+    level = get_setting(conn, THREAT_SNAPSHOT_LEVEL_KEY)
+    if not level:
+        return None
+    return {
+        "level": level,
+        "score": int(get_setting(conn, THREAT_SNAPSHOT_SCORE_KEY, "0") or "0"),
+        "reasons": json.loads(get_setting(conn, THREAT_SNAPSHOT_REASONS_KEY, "[]") or "[]"),
+        "total_events": int(get_setting(conn, THREAT_SNAPSHOT_TOTAL_EVENTS_KEY, "0") or "0"),
+        "period_label": get_setting(conn, THREAT_SNAPSHOT_PERIOD_LABEL_KEY, "") or "",
+        "updated_at": get_setting(conn, THREAT_SNAPSHOT_UPDATED_AT_KEY),
+    }
+
+
+def set_threat_snapshot(
+    conn: sqlite3.Connection, *, level: str, score: int, reasons: list[str],
+    total_events: int, period_label: str,
+) -> None:
+    set_setting(conn, THREAT_SNAPSHOT_LEVEL_KEY, level)
+    set_setting(conn, THREAT_SNAPSHOT_SCORE_KEY, str(score))
+    set_setting(conn, THREAT_SNAPSHOT_REASONS_KEY, json.dumps(reasons))
+    set_setting(conn, THREAT_SNAPSHOT_TOTAL_EVENTS_KEY, str(total_events))
+    set_setting(conn, THREAT_SNAPSHOT_PERIOD_LABEL_KEY, period_label)
+    set_setting(conn, THREAT_SNAPSHOT_UPDATED_AT_KEY, now_iso())
 
 
 def list_adjacent_units(conn: sqlite3.Connection) -> list[sqlite3.Row]:

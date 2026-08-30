@@ -539,6 +539,47 @@ def test_clear_threat_override_reverts_to_none():
         assert db.get_threat_override(conn) is None
 
 
+def test_threat_snapshot_defaults_to_none():
+    """No summary_refresh has ever run -- callers must show a neutral
+    "not yet updated" state, not a fabricated level."""
+    with db.get_connection() as conn:
+        assert db.get_threat_snapshot(conn) is None
+
+
+def test_set_and_get_threat_snapshot():
+    with db.get_connection() as conn:
+        db.set_threat_snapshot(
+            conn, level="red", score=7, reasons=["Återkommande beväpnad person"],
+            total_events=3, period_label="all",
+        )
+        snapshot = db.get_threat_snapshot(conn)
+
+    assert snapshot["level"] == "red"
+    assert snapshot["score"] == 7
+    assert snapshot["reasons"] == ["Återkommande beväpnad person"]
+    assert snapshot["total_events"] == 3
+    assert snapshot["period_label"] == "all"
+    assert snapshot["updated_at"] is not None
+
+
+def test_set_threat_snapshot_overwrites_the_previous_one():
+    """A single current snapshot, not a history -- see summary_log for
+    the actual history feature."""
+    with db.get_connection() as conn:
+        db.set_threat_snapshot(
+            conn, level="green", score=0, reasons=[], total_events=0, period_label="7d",
+        )
+        db.set_threat_snapshot(
+            conn, level="yellow", score=4, reasons=["Ett fordon återkommande"],
+            total_events=2, period_label="30d",
+        )
+        snapshot = db.get_threat_snapshot(conn)
+
+    assert snapshot["level"] == "yellow"
+    assert snapshot["score"] == 4
+    assert snapshot["period_label"] == "30d"
+
+
 def test_add_list_delete_adjacent_unit():
     with db.get_connection() as conn:
         assert db.list_adjacent_units(conn) == []

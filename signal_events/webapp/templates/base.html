@@ -114,13 +114,19 @@
     <div class="header-status">
       <span>{{ header_unit_name or "Enhet ej angiven" }}</span>
       <span id="header-clock"></span>
-      <span class="badge badge-level-{{ header_threat.level }}">
-        {% if header_threat.level == "red" %}RÖD
-        {% elif header_threat.level == "yellow" %}GUL
-        {% else %}GRÖN
-        {% endif %}
-        &middot; hotnivå ({{ header_threat_period_label }})
-      </span>
+      {% if header_threat %}
+        <span class="badge badge-level-{{ header_threat.level }}">
+          {% if header_threat.level == "red" %}RÖD
+          {% elif header_threat.level == "yellow" %}GUL
+          {% else %}GRÖN
+          {% endif %}
+          &middot; hotnivå ({{ header_threat_period_label }}, uppdaterad {{ header_threat_updated_at }})
+        </span>
+      {% else %}
+        <span class="badge badge-level-unknown" title="Klicka &quot;Uppdatera hotbedömning&quot; på Sammanställd hotbedömning">
+          Hotnivå ej fastställd
+        </span>
+      {% endif %}
       <span>Senast rapport till angränsande enheter: {{ header_last_adjacent_send }}</span>
       <span>Senast mottagning från Signal: {{ header_last_receive_success }}</span>
       {% if header_receive_error %}

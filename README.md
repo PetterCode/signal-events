@@ -123,17 +123,33 @@ double-click.
 **Header status strip** — every page in the web UI shows a status bar
 under "Signalhändelser" with, at a glance: the configured unit name, the
 current date/time (a plain client-side clock, ticking in the browser's
-own local time — nothing server-rendered or stale), a quick threat-level
-badge (GRÖN/GUL/RÖD, always agreeing with whatever period the
-Sammanställd hotbedömning page itself is currently showing — it reuses
-that page's own computation rather than a separately fixed window that
-could silently disagree with it), and when a report — incident report or
-threat-level summary — was last successfully sent via Signal to the
-report group that adjacent units' own status updates also arrive on
-("Aldrig" if never). This is a quick-glance indicator only; the
-authoritative assessment is always the dedicated Sammanställd
-hotbedömning page, computed over whichever period you actually select
-there.
+own local time — nothing server-rendered or stale), a threat-level badge
+(GRÖN/GUL/RÖD), and when a report — incident report or threat-level
+summary — was last successfully sent via Signal to the report group
+that adjacent units' own status updates also arrive on ("Aldrig" if
+never).
+
+**The threat-level badge is a manually-refreshed snapshot, not a live
+computation.** It only ever changes when a human clicks "Uppdatera
+hotbedömning" on the Sammanställd hotbedömning page (or sets/clears a
+manual override there — see "Manuell justering av hotnivå" below, which
+counts as the same kind of deliberate action and refreshes it too) —
+never just from viewing a page. The badge shows the period it was
+computed over and when, e.g. "RÖD · hotnivå (alla, uppdaterad 2026-08-30
+08:33)"; before the first-ever refresh it instead reads "Hotnivå ej
+fastställd" in a neutral grey, since showing a fabricated default would
+be misleading. This is deliberate: recomputing on every page load meant
+the badge could change out from under a human mid-shift with no specific
+moment anyone could point to as "when it changed" or "who/what triggered
+it" — now there's always an explicit action and a timestamp behind it.
+
+Sammanställd hotbedömning itself still lets you browse other
+Tidsperiod/granskningsfilter combinations freely — switching period
+recomputes and shows a live **förhandsgranskning** ("what would this
+period show if I updated now") so you can compare before committing,
+but nothing is saved anywhere (header included) until "Uppdatera
+hotbedömning" is actually clicked, and it freezes whatever period was
+selected at that moment.
 
 If any adjacent units have sent a status report, a third row lists each
 one's own latest reported threat level (GRÖN/GUL/RÖD/okänd) and when that
@@ -868,8 +884,12 @@ prefixed with a note naming the manual level, the automatic level, and
 any note you added. A single current override applies everywhere — the
 summary page, its downloads/sends, the CLI's `summary --llm`, and the
 header status strip on every page — until you click "Återgå till
-automatisk bedömning" to clear it. It persists in the local database
-across restarts, the same way the unit name does.
+automatisk bedömning" to clear it. Setting or clearing an override is
+itself a deliberate action, so — unlike just browsing Sammanställd
+hotbedömning's period filter — it immediately refreshes the header's
+snapshot too, no separate "Uppdatera hotbedömning" click needed (see
+"Header status strip" above). It persists in the local database across
+restarts, the same way the unit name does.
 
 **Logg över hotbedömningar** ("Sammanställd hotbedömning" page → "Visa
 logg över tidigare hotbedömningar") records every time a threat-level

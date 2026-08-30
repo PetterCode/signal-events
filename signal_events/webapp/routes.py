@@ -233,19 +233,17 @@ def inject_header_status() -> dict:
     (see cli.py's _run_watch_loop/signal_client.watch_multi) is actually
     alive and succeeding, since the web server itself stays up
     regardless of whether that separate thread has died or has started
-    failing every cycle. The threat level here must always agree with
-    the Sammanställd hotbedömning page, so it reuses that page's own
-    computation (_compute_summary, which excludes duplicates) over the
-    exact same session-remembered period/filter that page is currently
-    showing -- not some independently fixed window that could silently
-    disagree with it. Skipped for the login page itself -- it doesn't
+    failing every cycle. The threat level here is a frozen snapshot (see
+    db.get_threat_snapshot), not live-computed on every page load -- it
+    only ever changes when a human clicks "Uppdatera hotbedömning" on
+    Sammanställd hotbedömning (see summary_refresh), so it always agrees
+    with that page's own "Nuvarande hotbedömning" card exactly, not just
+    approximately. Skipped for the login page itself -- it doesn't
     extend base.html (so none of this would be shown anyway), and this
     avoids running a duplicate-classification DB write for every
     anonymous hit the login page gets from the network."""
     if request.endpoint in ("events.login", "events.logout"):
         return {}
-    preset = session.get("summary_since", "7d")
-    include_unreviewed = session.get("summary_include_unreviewed", False)
     with db.get_connection() as conn:
         unit_name = db.get_unit_name(conn)
         last_adjacent_send_at = db.get_last_adjacent_send(conn)
@@ -253,7 +251,7 @@ def inject_header_status() -> dict:
         receive_error = db.get_last_receive_error(conn)
         demo_mode = db.has_demo_events(conn)
         adjacent_reports = db.list_latest_adjacent_reports_per_unit(conn)
-    threat = _compute_summary(preset, include_unreviewed).threat
+        threat_snapshot = db.get_threat_snapshot(conn)
     adjacent_statuses = [
         {
             "unit_name": report["unit_name"],
@@ -264,8 +262,12 @@ def inject_header_status() -> dict:
     ]
     return {
         "header_unit_name": unit_name,
-        "header_threat": threat,
-        "header_threat_period_label": _SINCE_LABELS.get(preset, preset),
+        "header_threat": threat_snapshot,
+        "header_threat_period_label": (
+            _SINCE_LABELS.get(threat_snapshot["period_label"], threat_snapshot["period_label"])
+            if threat_snapshot else None
+        ),
+        "header_threat_updated_at": _format_dt(threat_snapshot["updated_at"]) if threat_snapshot else None,
         "header_last_adjacent_send": _format_dt(last_adjacent_send_at),
         "header_last_receive_success": _format_dt(last_receive_success_at),
         "header_receive_error": receive_error,
@@ -2077,6 +2079,8 @@ def _render_summary_page(
     narrative: str | None = None,
 ):
     report_group = _report_group_name()
+    with db.get_connection() as conn:
+        threat_snapshot = db.get_threat_snapshot(conn)
     return render_template(
         "summary.html", summary=summary_data, since=preset,
         include_unreviewed=include_unreviewed, unit_name=_unit_name(),
@@ -2085,7 +2089,54 @@ def _render_summary_page(
         adjacent_rows=_adjacent_status_rows(preset),
         override=_threat_override_display(),
         narrative=narrative,
+        threat_snapshot=threat_snapshot,
+        threat_snapshot_period_label=(
+            _SINCE_LABELS.get(threat_snapshot["period_label"], threat_snapshot["period_label"])
+            if threat_snapshot else None
+        ),
     )
+
+
+def _refresh_threat_snapshot(preset: str, include_unreviewed: bool) -> analysis.Summary:
+    """Recomputes and freezes a new "Nuvarande hotbedömning" (see
+    db.set_threat_snapshot/get_threat_snapshot and inject_header_status)
+    -- shared by summary_refresh (the explicit "Uppdatera hotbedömning"
+    button) and summary_override/summary_override_clear, since setting
+    or clearing a manual override is itself just as deliberate a human
+    action determining "what the current threat level is" and should
+    take effect immediately too, not require a separate Uppdatera click
+    on top of it. _compute_summary already bakes in whatever override is
+    active at the moment this runs, so the snapshot always reflects it
+    correctly either way."""
+    summary_data = _compute_summary(preset, include_unreviewed)
+    with db.get_connection() as conn:
+        db.set_threat_snapshot(
+            conn, level=summary_data.threat.level, score=summary_data.threat.score,
+            reasons=summary_data.threat.reasons, total_events=summary_data.total_events,
+            period_label=preset,
+        )
+    return summary_data
+
+
+@bp.route("/summary/refresh", methods=["POST"])
+def summary_refresh():
+    """The main way "Nuvarande hotbedömning" (shown here and on the
+    header status strip) changes -- recomputing the threat level on
+    every page view used to mean it could silently change out from
+    under a human mid-shift, with no specific moment anyone could point
+    to as "when it changed" or "who/what triggered it". Now it only
+    changes on a deliberate action (this button, or setting/clearing a
+    manual override -- see _refresh_threat_snapshot), and gets a
+    timestamp. Uses whatever Tidsperiod/granskningsfilter was selected
+    on the page at the moment of the click (posted as hidden fields,
+    see summary.html) -- the same period the live preview below was
+    already showing, so what gets frozen is exactly what the human just
+    looked at, not some other window."""
+    preset = request.form.get("since", session.get("summary_since", "7d"))
+    include_unreviewed = request.form.get("include_unreviewed") == "1"
+    _refresh_threat_snapshot(preset, include_unreviewed)
+    flash("Hotbedömningen uppdaterad.")
+    return redirect(url_for("events.summary", since=preset, include_unreviewed=1 if include_unreviewed else 0))
 
 
 @bp.route("/summary/narrative", methods=["POST"])
@@ -2141,6 +2192,7 @@ def summary_override():
     else:
         with db.get_connection() as conn:
             db.set_threat_override(conn, level, notes)
+        _refresh_threat_snapshot(preset, include_unreviewed)
         flash("Manuell hotnivå sparad.")
 
     return redirect(
@@ -2155,6 +2207,7 @@ def summary_override_clear():
 
     with db.get_connection() as conn:
         db.clear_threat_override(conn)
+    _refresh_threat_snapshot(preset, include_unreviewed)
     flash("Återgår till automatisk hotbedömning.")
 
     return redirect(
