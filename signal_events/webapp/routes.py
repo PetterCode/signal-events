@@ -238,10 +238,23 @@ def inject_header_status() -> dict:
     only ever changes when a human clicks "Uppdatera hotbedömning" on
     Sammanställd hotbedömning (see summary_refresh), so it always agrees
     with that page's own "Nuvarande hotbedömning" card exactly, not just
-    approximately. Skipped for the login page itself -- it doesn't
-    extend base.html (so none of this would be shown anyway), and this
-    avoids running a duplicate-classification DB write for every
-    anonymous hit the login page gets from the network."""
+    approximately.
+
+    One small live computation still happens here, purely for a warning
+    icon next to the badge: whatever Tidsperiod/granskningsfilter
+    Sammanställd hotbedömning was last viewed with (same session values
+    that page's own "Förhandsgranskning" card already shows) is
+    recomputed and compared against the frozen snapshot's level
+    (analysis.LEVEL_RANK) -- if the live preview is *more* severe, the
+    icon flags that updating right now would raise the level, without
+    actually raising it (that still needs the deliberate click). Skipped
+    entirely once there's no snapshot to compare against yet (nothing to
+    flag as "higher than").
+
+    Skipped for the login page itself -- it doesn't extend base.html (so
+    none of this would be shown anyway), and this avoids running a
+    duplicate-classification DB write for every anonymous hit the login
+    page gets from the network."""
     if request.endpoint in ("events.login", "events.logout"):
         return {}
     with db.get_connection() as conn:
@@ -260,6 +273,19 @@ def inject_header_status() -> dict:
         }
         for report in adjacent_reports
     ]
+
+    would_increase = False
+    preview_level_label = None
+    preview_period_label = None
+    if threat_snapshot is not None:
+        preview_preset = session.get("summary_since", "7d")
+        preview_include_unreviewed = session.get("summary_include_unreviewed", False)
+        preview = _compute_summary(preview_preset, preview_include_unreviewed)
+        if analysis.LEVEL_RANK[preview.threat.level] > analysis.LEVEL_RANK[threat_snapshot["level"]]:
+            would_increase = True
+            preview_level_label = {"green": "GRÖN", "yellow": "GUL", "red": "RÖD"}[preview.threat.level]
+            preview_period_label = _SINCE_LABELS.get(preview_preset, preview_preset)
+
     return {
         "header_unit_name": unit_name,
         "header_threat": threat_snapshot,
@@ -268,6 +294,9 @@ def inject_header_status() -> dict:
             if threat_snapshot else None
         ),
         "header_threat_updated_at": _format_dt(threat_snapshot["updated_at"]) if threat_snapshot else None,
+        "header_threat_would_increase": would_increase,
+        "header_threat_preview_level_label": preview_level_label,
+        "header_threat_preview_period_label": preview_period_label,
         "header_last_adjacent_send": _format_dt(last_adjacent_send_at),
         "header_last_receive_success": _format_dt(last_receive_success_at),
         "header_receive_error": receive_error,

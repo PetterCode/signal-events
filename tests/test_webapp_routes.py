@@ -397,6 +397,70 @@ def test_summary_refresh_freezes_the_previewed_period_into_the_header():
     assert b'class="badge badge-level-red"' in resp_events_again.data
 
 
+def test_header_shows_no_increase_icon_before_the_first_snapshot():
+    """Nothing to compare a live preview against yet -- the icon has no
+    meaning until a snapshot exists (see inject_header_status)."""
+    _insert_two_recurring_armed_sightings()
+    client = create_app().test_client()
+
+    client.get("/summary?since=all")  # would preview as RÖD, but no snapshot to compare it against
+    resp = client.get("/events")
+    assert b'class="threat-would-increase"' not in resp.data
+
+
+def test_header_shows_increase_icon_when_the_last_viewed_period_previews_higher():
+    """The icon is purely informational -- it must not itself change the
+    frozen snapshot, only flag that Uppdatera would raise it."""
+    client = create_app().test_client()
+    # Snapshot GREEN with nothing in the log yet.
+    client.post("/summary/refresh", data={"since": "7d", "include_unreviewed": "0"})
+    with db_module.get_connection() as conn:
+        assert db_module.get_threat_snapshot(conn)["level"] == "green"
+
+    _insert_two_recurring_armed_sightings()
+    # Viewing "all" (without refreshing) remembers it in the session --
+    # the live preview for that period is RÖD, higher than the frozen
+    # GREEN snapshot.
+    client.get("/summary?since=all")
+
+    resp = client.get("/events")
+    assert b'class="threat-would-increase"' in resp.data
+    assert "Förhandsgranskningen".encode() in resp.data
+    assert "RÖD".encode() in resp.data
+
+    # The snapshot itself is untouched -- still green, only the icon
+    # reflects the higher preview.
+    with db_module.get_connection() as conn:
+        assert db_module.get_threat_snapshot(conn)["level"] == "green"
+
+    # Refreshing now catches the snapshot up to the preview -- equal
+    # levels, so the icon disappears.
+    client.post("/summary/refresh", data={"since": "all", "include_unreviewed": "0"})
+    resp_after_refresh = client.get("/events")
+    assert b'class="threat-would-increase"' not in resp_after_refresh.data
+
+
+def test_header_does_not_show_increase_icon_when_preview_is_lower():
+    """The icon only ever flags an *increase* -- a preview lower than the
+    frozen snapshot (e.g. things have quieted down) must not show it."""
+    _insert_two_recurring_armed_sightings()
+    client = create_app().test_client()
+    # Snapshot RÖD, previewing "all" which includes the armed sightings.
+    client.post("/summary/refresh", data={"since": "all", "include_unreviewed": "0"})
+    with db_module.get_connection() as conn:
+        assert db_module.get_threat_snapshot(conn)["level"] == "red"
+
+    # Clear the events (simplest way to force a lower live preview) and
+    # view a different period -- the preview is now GREEN, lower than
+    # the frozen RÖD snapshot.
+    with db_module.get_connection() as conn:
+        db_module.reset_events(conn)
+    client.get("/summary?since=7d")
+
+    resp = client.get("/events")
+    assert b'class="threat-would-increase"' not in resp.data
+
+
 def test_delete_event_route_removes_the_event_and_redirects_to_the_list():
     with db_module.get_connection() as conn:
         message_id = db_module.insert_message(

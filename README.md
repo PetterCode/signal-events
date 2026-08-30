@@ -151,6 +151,18 @@ but nothing is saved anywhere (header included) until "Uppdatera
 hotbedömning" is actually clicked, and it freezes whatever period was
 selected at that moment.
 
+**A small orange ▲ next to the badge** flags when the live preview for
+whichever period you last had Sammanställd hotbedömning open to (the
+same one the förhandsgranskning card shows) would be a *higher* level
+than the frozen snapshot — e.g. the header still reads GRÖN, but a
+recent recurring armed sighting means an update right now would jump it
+to RÖD. Hovering it names the level and period it's based on. This is
+the one piece of the header that's still computed live on every page
+(purely for this comparison, never shown as the badge itself) — it
+never appears before the first snapshot exists (nothing to compare
+against yet), and never for a preview that's *lower* than the snapshot,
+only higher.
+
 If any adjacent units have sent a status report, a third row lists each
 one's own latest reported threat level (GRÖN/GUL/RÖD/okänd) and when that
 report was received, as a small badge, e.g. "2.Kompani: GUL · mottagen

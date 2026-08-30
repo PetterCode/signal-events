@@ -156,6 +156,12 @@ class ThreatAssessment:
     sabotage_sightings: int = 0
 
 
+# Ordinal severity, for comparing two levels (e.g. "would refreshing the
+# snapshot right now raise the header's frozen level?" -- see
+# webapp/routes.py's inject_header_status) rather than just for display.
+LEVEL_RANK = {"green": 0, "yellow": 1, "red": 2}
+
+
 @dataclass
 class Summary:
     total_events: int

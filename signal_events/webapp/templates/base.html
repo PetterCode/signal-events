@@ -28,6 +28,12 @@
     .badge-level-unknown { background: #e0e0e0; color: #555; }
     .badge-demo { background: #e0d7f0; color: #4b2e83; }
     .badge-adjacent { background: #d7e3f0; color: #1f5c8a; }
+    /* "Would raise the threat level if updated now" flag next to the
+       header's threat badge -- see inject_header_status's live-preview
+       comparison. A plain unicode glyph, same approach as the
+       details/summary disclosure triangle above, so this needs no icon
+       font/image asset. */
+    .threat-would-increase { color: #b45309; font-weight: 700; cursor: help; margin-left: 0.15rem; }
     .header-adjacent { font-size: 0.75rem; }
     .card { background: #fff; padding: 1rem 1.5rem; border-radius: 6px; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
     .card > details > summary { cursor: pointer; list-style: none; }
@@ -122,6 +128,12 @@
           {% endif %}
           &middot; hotnivå ({{ header_threat_period_label }}, uppdaterad {{ header_threat_updated_at }})
         </span>
+        {% if header_threat_would_increase %}
+          <span class="threat-would-increase"
+                title="Förhandsgranskningen ({{ header_threat_preview_period_label }}) visar {{ header_threat_preview_level_label }} -- högre än nuvarande hotbedömning. Uppdatera på Sammanställd hotbedömning för att se.">
+            &#9650;
+          </span>
+        {% endif %}
       {% else %}
         <span class="badge badge-level-unknown" title="Klicka &quot;Uppdatera hotbedömning&quot; på Sammanställd hotbedömning">
           Hotnivå ej fastställd
